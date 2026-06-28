@@ -1,0 +1,205 @@
+{
+  "version": "1.0",
+  "ips": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440001",
+      "vendor": "xilinx.com",
+      "library": "ip",
+      "name": "processing_system7",
+      "version": "5.5",
+      "display_name": "Zynq Processing System",
+      "description": "Zynq-7000 Processing System with ARM Cortex-A9 dual-core processor",
+      "category": "Embedded Processing",
+      "tags": ["zynq", "processor", "arm", "ps"],
+      "status": "active",
+      "compatibility": {
+        "device_families": ["zynq", "zynq-ultrascale"]
+      },
+      "interfaces": [
+        {
+          "name": "M_AXI_GP0",
+          "type": "axi4",
+          "role": "master",
+          "signals": [
+            {"name": "AWADDR", "direction": "output", "width": 32},
+            {"name": "AWVALID", "direction": "output", "width": 1},
+            {"name": "AWREADY", "direction": "input", "width": 1}
+          ]
+        },
+        {
+          "name": "S_AXI_HP0",
+          "type": "axi4",
+          "role": "slave",
+          "signals": [
+            {"name": "AWADDR", "direction": "input", "width": 32},
+            {"name": "AWVALID", "direction": "input", "width": 1},
+            {"name": "AWREADY", "direction": "output", "width": 1}
+          ]
+        }
+      ],
+      "parameters": [
+        {
+          "name": "C_M_AXI_GP0_ENABLE",
+          "display_name": "Enable M_AXI_GP0",
+          "type": "bool",
+          "default": true
+        },
+        {
+          "name": "C_S_AXI_HP0_ENABLE",
+          "display_name": "Enable S_AXI_HP0",
+          "type": "bool",
+          "default": true
+        }
+      ],
+      "file_groups": [
+        {"type": "synthesis", "files": ["processing_system7.v"]},
+        {"type": "simulation", "files": ["processing_system7_sim.v"]}
+      ],
+      "register_map": {
+        "registers": []
+      }
+    },
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440002",
+      "vendor": "xilinx.com",
+      "library": "ip",
+      "name": "axi_gpio",
+      "version": "2.0",
+      "display_name": "AXI GPIO",
+      "description": "General Purpose I/O with AXI4-Lite interface",
+      "category": "Basic Elements",
+      "tags": ["gpio", "axi", "io"],
+      "status": "active",
+      "compatibility": {
+        "device_families": ["zynq", "zynq-ultrascale", "artix", "kintex"]
+      },
+      "interfaces": [
+        {
+          "name": "S_AXI",
+          "type": "axi4_lite",
+          "role": "slave",
+          "signals": [
+            {"name": "AWADDR", "direction": "input", "width": 32},
+            {"name": "AWVALID", "direction": "input", "width": 1},
+            {"name": "AWREADY", "direction": "output", "width": 1}
+          ]
+        },
+        {
+          "name": "GPIO",
+          "type": "custom",
+          "role": "bidirectional",
+          "signals": [
+            {"name": "GPIO_IO", "direction": "inout", "width": 32}
+          ]
+        }
+      ],
+      "parameters": [
+        {
+          "name": "C_GPIO_WIDTH",
+          "display_name": "GPIO Width",
+          "type": "long",
+          "default": 32,
+          "range": {"min": 1, "max": 32}
+        },
+        {
+          "name": "C_ALL_INPUTS",
+          "display_name": "All Inputs",
+          "type": "bool",
+          "default": false
+        }
+      ],
+      "file_groups": [
+        {"type": "synthesis", "files": ["axi_gpio.v"]},
+        {"type": "simulation", "files": ["axi_gpio_sim.v"]}
+      ],
+      "register_map": {
+        "registers": [
+          {
+            "name": "GIER",
+            "offset": "0x0000",
+            "width": 32,
+            "access": "RW",
+            "reset_value": "0x00000000",
+            "description": "Global Interrupt Enable Register",
+            "fields": [
+              {
+                "name": "GIE",
+                "bit_range": [0, 0],
+                "access": "RW",
+                "description": "Global Interrupt Enable"
+              }
+            ]
+          },
+          {
+            "name": "IP_IER",
+            "offset": "0x0004",
+            "width": 32,
+            "access": "RW",
+            "reset_value": "0x00000000",
+            "description": "IP Interrupt Enable Register",
+            "fields": [
+              {
+                "name": "CH0",
+                "bit_range": [0, 0],
+                "access": "RW",
+                "description": "Channel 0 Interrupt Enable"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440003",
+      "vendor": "xilinx.com",
+      "library": "ip",
+      "name": "axi_interconnect",
+      "version": "2.1",
+      "display_name": "AXI Interconnect",
+      "description": "AXI4 Interconnect for connecting multiple master and slave interfaces",
+      "category": "Infrastructure",
+      "tags": ["axi", "interconnect", "bus"],
+      "status": "active",
+      "compatibility": {
+        "device_families": ["zynq", "zynq-ultrascale", "artix", "kintex"]
+      },
+      "interfaces": [
+        {
+          "name": "S00_AXI",
+          "type": "axi4",
+          "role": "slave",
+          "signals": []
+        },
+        {
+          "name": "M00_AXI",
+          "type": "axi4",
+          "role": "master",
+          "signals": []
+        }
+      ],
+      "parameters": [
+        {
+          "name": "NUM_SLAVE_PORTS",
+          "display_name": "Number of Slave Ports",
+          "type": "long",
+          "default": 1,
+          "range": {"min": 1, "max": 16}
+        },
+        {
+          "name": "NUM_MASTER_PORTS",
+          "display_name": "Number of Master Ports",
+          "type": "long",
+          "default": 1,
+          "range": {"min": 1, "max": 16}
+        }
+      ],
+      "file_groups": [
+        {"type": "synthesis", "files": ["axi_interconnect.v"]},
+        {"type": "simulation", "files": ["axi_interconnect_sim.v"]}
+      ],
+      "register_map": {
+        "registers": []
+      }
+    }
+  ]
+}

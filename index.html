@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IP Management System</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Title Bar -->
+        <header class="title-bar">
+            <div class="logo">IP Management System</div>
+            <div class="toolbar">
+                <button id="btn-new-design" class="btn">New Design</button>
+                <button id="btn-open-design" class="btn">Open Design</button>
+                <button id="btn-save-design" class="btn">Save Design</button>
+                <button id="btn-package-ip" class="btn">Package IP</button>
+                <button id="btn-export-tcl" class="btn">Export Tcl</button>
+                <button id="btn-auto-connect" class="btn">Auto Connect</button>
+                <button id="btn-validate" class="btn">Validate</button>
+            </div>
+        </header>
+
+        <!-- Main Layout -->
+        <div class="main-layout">
+            <!-- Left Panel: IP Catalog -->
+            <aside class="left-panel">
+                <div class="panel-header">
+                    <h3>IP Catalog</h3>
+                    <input type="text" id="ip-search" placeholder="Search IP..." class="search-input">
+                </div>
+                <div class="panel-content">
+                    <div class="filter-section">
+                        <select id="category-filter" class="filter-select">
+                            <option value="">All Categories</option>
+                        </select>
+                    </div>
+                    <div id="ip-list" class="ip-list">
+                        <!-- IP items will be rendered here -->
+                    </div>
+                    <div class="catalog-actions">
+                        <button id="btn-import-ip" class="btn-small">Import IP</button>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Center: Canvas -->
+            <main class="canvas-container">
+                <div id="canvas-wrapper" class="canvas-wrapper">
+                    <canvas id="design-canvas"></canvas>
+                </div>
+                <div class="canvas-controls">
+                    <button id="btn-zoom-in" class="btn-small">+</button>
+                    <span id="zoom-level">100%</span>
+                    <button id="btn-zoom-out" class="btn-small">-</button>
+                    <button id="btn-fit" class="btn-small">Fit</button>
+                </div>
+            </main>
+
+            <!-- Right Panel: Properties -->
+            <aside class="right-panel">
+                <div class="panel-header">
+                    <h3>Properties</h3>
+                </div>
+                <div id="properties-content" class="panel-content">
+                    <div class="placeholder-text">Select an IP instance to view properties</div>
+                </div>
+            </aside>
+        </div>
+
+        <!-- Bottom Panel: Console / Status -->
+        <footer class="status-bar">
+            <div id="status-text">Ready</div>
+            <div class="status-info">
+                <span id="cell-count">Cells: 0</span>
+                <span id="connection-count">Connections: 0</span>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Modal: Parameter Editor -->
+    <div id="param-editor-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="param-editor-title">Edit Parameter</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label id="param-editor-label">Value:</label>
+                    <div id="param-editor-input-container"></div>
+                    <div id="param-editor-range" class="param-range-hint"></div>
+                </div>
+                <div class="form-actions">
+                    <button id="btn-save-param" class="btn-primary">Save</button>
+                    <button class="btn-cancel modal-close">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: IP Packager Wizard -->
+    <div id="ip-packager-modal" class="modal hidden">
+        <div class="modal-content wizard-modal">
+            <div class="modal-header">
+                <h3>Package New IP</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="wizard-body">
+                <!-- Step Indicator -->
+                <div class="wizard-steps">
+                    <div class="wizard-step active"><span>1</span>Basic</div>
+                    <div class="wizard-step"><span>2</span>Files</div>
+                    <div class="wizard-step"><span>3</span>Interfaces</div>
+                    <div class="wizard-step"><span>4</span>Parameters</div>
+                    <div class="wizard-step"><span>5</span>Registers</div>
+                    <div class="wizard-step"><span>6</span>Preview</div>
+                </div>
+                <!-- Wizard Content -->
+                <div id="ip-packager-content" class="wizard-content"></div>
+            </div>
+            <div class="wizard-footer">
+                <button id="wizard-prev" class="btn" style="display:none;">Previous</button>
+                <button id="wizard-next" class="btn-primary">Next</button>
+                <button id="wizard-finish" class="btn-primary" style="display:none;">Finish</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: IP Detail -->
+    <div id="ip-detail-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-ip-name">IP Detail</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div id="modal-ip-content" class="modal-body"></div>
+        </div>
+    </div>
+
+    <!-- Modal: New Design -->
+    <div id="new-design-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>New Block Design</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Name:</label>
+                    <input type="text" id="new-design-name" value="design_1">
+                </div>
+                <div class="form-group">
+                    <label>Description:</label>
+                    <textarea id="new-design-desc" rows="3"></textarea>
+                </div>
+                <div class="form-actions">
+                    <button id="btn-create-design" class="btn-primary">Create</button>
+                    <button class="btn-cancel modal-close">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="src/main.js"></script>
+</body>
+</html>

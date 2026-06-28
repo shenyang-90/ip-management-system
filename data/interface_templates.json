@@ -1,0 +1,93 @@
+{
+  "version": "1.0",
+  "templates": [
+    {
+      "id": "template-axi4",
+      "name": "AXI4",
+      "version": "1.0",
+      "interface_type": "axi4",
+      "role": "master",
+      "description": "ARM AMBA AXI4 protocol interface",
+      "signals": [
+        {"name": "AWID", "direction": "output", "width": 8},
+        {"name": "AWADDR", "direction": "output", "width": 32},
+        {"name": "AWLEN", "direction": "output", "width": 8},
+        {"name": "AWSIZE", "direction": "output", "width": 3},
+        {"name": "AWBURST", "direction": "output", "width": 2},
+        {"name": "AWLOCK", "direction": "output", "width": 2},
+        {"name": "AWCACHE", "direction": "output", "width": 4},
+        {"name": "AWPROT", "direction": "output", "width": 3},
+        {"name": "AWQOS", "direction": "output", "width": 4},
+        {"name": "AWVALID", "direction": "output", "width": 1},
+        {"name": "AWREADY", "direction": "input", "width": 1}
+      ],
+      "metadata": {
+        "standard": "ARM AMBA AXI4",
+        "doc_url": "https://developer.arm.com/documentation/ihi0022"
+      }
+    },
+    {
+      "id": "template-axi4-lite",
+      "name": "AXI4-Lite",
+      "version": "1.0",
+      "interface_type": "axi4_lite",
+      "role": "slave",
+      "description": "ARM AMBA AXI4-Lite protocol interface",
+      "signals": [
+        {"name": "AWADDR", "direction": "input", "width": 32},
+        {"name": "AWPROT", "direction": "input", "width": 3},
+        {"name": "AWVALID", "direction": "input", "width": 1},
+        {"name": "AWREADY", "direction": "output", "width": 1}
+      ],
+      "metadata": {
+        "standard": "ARM AMBA AXI4-Lite",
+        "doc_url": "https://developer.arm.com/documentation/ihi0022"
+      }
+    },
+    {
+      "id": "template-axi4-stream",
+      "name": "AXI4-Stream",
+      "version": "1.0",
+      "interface_type": "axi4_stream",
+      "role": "master",
+      "description": "ARM AMBA AXI4-Stream protocol interface",
+      "signals": [
+        {"name": "TDATA", "direction": "output", "width": 32},
+        {"name": "TVALID", "direction": "output", "width": 1},
+        {"name": "TREADY", "direction": "input", "width": 1}
+      ],
+      "metadata": {
+        "standard": "ARM AMBA AXI4-Stream",
+        "doc_url": "https://developer.arm.com/documentation/ihi0022"
+      }
+    },
+    {
+      "id": "template-clock",
+      "name": "Clock",
+      "version": "1.0",
+      "interface_type": "clock",
+      "role": "master",
+      "description": "Clock signal interface",
+      "signals": [
+        {"name": "CLK", "direction": "output", "width": 1}
+      ],
+      "metadata": {
+        "associated": ["reset"]
+      }
+    },
+    {
+      "id": "template-reset",
+      "name": "Reset",
+      "version": "1.0",
+      "interface_type": "reset",
+      "role": "master",
+      "description": "Reset signal interface",
+      "signals": [
+        {"name": "RST", "direction": "output", "width": 1}
+      ],
+      "metadata": {
+        "polarity": "active_low"
+      }
+    }
+  ]
+}

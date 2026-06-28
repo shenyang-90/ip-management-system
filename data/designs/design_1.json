@@ -1,0 +1,125 @@
+{
+  "id": "bd-001",
+  "name": "design_1",
+  "description": "Zynq base system with AXI GPIO",
+  "status": "editing",
+  "canvas_data": {
+    "viewport": {"x": 0, "y": 0, "zoom": 1.0},
+    "grid": true
+  },
+  "cells": [
+    {
+      "id": "cell-001",
+      "ip_entity_id": "550e8400-e29b-41d4-a716-446655440001",
+      "cell_type": "ip_instance",
+      "instance_name": "ps_0",
+      "position_x": 100,
+      "position_y": 100,
+      "parameter_overrides": {
+        "C_M_AXI_GP0_ENABLE": true,
+        "C_S_AXI_HP0_ENABLE": true
+      },
+      "register_address_map": {}
+    },
+    {
+      "id": "cell-002",
+      "ip_entity_id": "550e8400-e29b-41d4-a716-446655440003",
+      "cell_type": "ip_instance",
+      "instance_name": "axi_interconnect_0",
+      "position_x": 400,
+      "position_y": 100,
+      "parameter_overrides": {
+        "NUM_SLAVE_PORTS": 1,
+        "NUM_MASTER_PORTS": 1
+      },
+      "register_address_map": {}
+    },
+    {
+      "id": "cell-003",
+      "ip_entity_id": "550e8400-e29b-41d4-a716-446655440002",
+      "cell_type": "ip_instance",
+      "instance_name": "gpio_0",
+      "position_x": 700,
+      "position_y": 100,
+      "parameter_overrides": {
+        "C_GPIO_WIDTH": 16,
+        "C_ALL_INPUTS": false
+      },
+      "register_address_map": {
+        "GIER": 1073741824,
+        "IP_IER": 1073741828
+      }
+    }
+  ],
+  "connections": [
+    {
+      "id": "conn-001",
+      "source_cell_id": "cell-001",
+      "source_interface": "M_AXI_GP0",
+      "target_cell_id": "cell-002",
+      "target_interface": "S00_AXI",
+      "connection_type": "interface",
+      "status": "valid",
+      "validation_messages": []
+    },
+    {
+      "id": "conn-002",
+      "source_cell_id": "cell-002",
+      "source_interface": "M00_AXI",
+      "target_cell_id": "cell-003",
+      "target_interface": "S_AXI",
+      "connection_type": "interface",
+      "status": "valid",
+      "validation_messages": []
+    }
+  ],
+  "address_regions": [
+    {
+      "id": "addr-001",
+      "cell_id": "cell-003",
+      "interface_name": "S_AXI",
+      "base_address": 1073741824,
+      "high_address": 1073742335,
+      "size": 512,
+      "address_space": "Data",
+      "register_map": {
+        "registers": [
+          {
+            "name": "GIER",
+            "absolute_address": 1073741824,
+            "offset": "0x0000",
+            "width": 32,
+            "access": "RW",
+            "reset_value": "0x00000000",
+            "description": "Global Interrupt Enable Register",
+            "fields": [
+              {
+                "name": "GIE",
+                "bit_range": [0, 0],
+                "access": "RW",
+                "description": "Global Interrupt Enable"
+              }
+            ]
+          },
+          {
+            "name": "IP_IER",
+            "absolute_address": 1073741828,
+            "offset": "0x0004",
+            "width": 32,
+            "access": "RW",
+            "reset_value": "0x00000000",
+            "description": "IP Interrupt Enable Register",
+            "fields": [
+              {
+                "name": "CH0",
+                "bit_range": [0, 0],
+                "access": "RW",
+                "description": "Channel 0 Interrupt Enable"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
