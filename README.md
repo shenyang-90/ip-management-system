@@ -15,6 +15,8 @@ python -m http.server 8000
 # 然后访问 http://localhost:8000
 ```
 
+> 💡 **提示**：推荐使用 Chrome 或 Edge 浏览器以获得最佳的 File System Access API 支持。
+
 ## 项目结构
 
 ```
