@@ -358,7 +358,7 @@ class App {
 }
 
 // Initialize app when DOM is ready
-document.addEventListener('DOMContentLoaded', async () => {
+async function init() {
     const app = new App();
     await app.initialize();
     
@@ -372,6 +372,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
     });
-});
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+} else {
+    init();
+}
 
 export { App };
