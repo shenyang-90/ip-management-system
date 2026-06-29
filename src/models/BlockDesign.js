@@ -1,7 +1,9 @@
+import { generateUUID } from '../utils/uuid.js';
+
 // Block Design model
 class BlockDesign {
     constructor(data = {}) {
-        this.id = data.id || this._generateUUID();
+        this.id = data.id || generateUUID();
         this.name = data.name || "unnamed_design";
         this.description = data.description || "";
         this.status = data.status || "editing";
@@ -30,19 +32,11 @@ class BlockDesign {
     static fromJSON(json) {
         return new BlockDesign(json);
     }
-
-    _generateUUID() {
-        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-            const r = Math.random() * 16 | 0;
-            const v = c === 'x' ? r : (r & 0x3 | 0x8);
-            return v.toString(16);
-        });
-    }
 }
 
 class BDCell {
     constructor(data = {}) {
-        this.id = data.id || this._generateUUID();
+        this.id = data.id || generateUUID();
         this.ip_entity_id = data.ip_entity_id || null;
         this.cell_type = data.cell_type || "ip_instance";
         this.instance_name = data.instance_name || "";
@@ -70,19 +64,11 @@ class BDCell {
     static fromJSON(json) {
         return new BDCell(json);
     }
-
-    _generateUUID() {
-        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-            const r = Math.random() * 16 | 0;
-            const v = c === 'x' ? r : (r & 0x3 | 0x8);
-            return v.toString(16);
-        });
-    }
 }
 
 class BDConnection {
     constructor(data = {}) {
-        this.id = data.id || this._generateUUID();
+        this.id = data.id || generateUUID();
         this.source_cell_id = data.source_cell_id || "";
         this.source_interface = data.source_interface || null;
         this.source_signal = data.source_signal || null;
@@ -114,19 +100,11 @@ class BDConnection {
     static fromJSON(json) {
         return new BDConnection(json);
     }
-
-    _generateUUID() {
-        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-            const r = Math.random() * 16 | 0;
-            const v = c === 'x' ? r : (r & 0x3 | 0x8);
-            return v.toString(16);
-        });
-    }
 }
 
 class AddressRegion {
     constructor(data = {}) {
-        this.id = data.id || this._generateUUID();
+        this.id = data.id || generateUUID();
         this.cell_id = data.cell_id || "";
         this.interface_name = data.interface_name || "";
         this.base_address = data.base_address !== undefined ? data.base_address : 0;
@@ -151,14 +129,6 @@ class AddressRegion {
 
     static fromJSON(json) {
         return new AddressRegion(json);
-    }
-
-    _generateUUID() {
-        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-            const r = Math.random() * 16 | 0;
-            const v = c === 'x' ? r : (r & 0x3 | 0x8);
-            return v.toString(16);
-        });
     }
 }
 

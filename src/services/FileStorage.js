@@ -4,6 +4,7 @@ class FileStorage {
         this.ipCatalogPath = 'data/ip_catalog.json';
         this.interfaceTemplatesPath = 'data/interface_templates.json';
         this.designsPath = 'data/designs/';
+        this.currentDirHandle = null;
     }
 
     async loadIPCatalog() {
@@ -66,6 +67,7 @@ class FileStorage {
         if ('showDirectoryPicker' in window) {
             try {
                 const dirHandle = await window.showDirectoryPicker();
+                this.currentDirHandle = dirHandle;
                 return dirHandle;
             } catch (error) {
                 console.error('Directory picker cancelled:', error);
@@ -101,20 +103,42 @@ class FileStorage {
     }
 
     // Fallback: trigger download for browsers without File System Access API
-    _saveToFile(filePath, content) {
-        return new Promise((resolve, reject) => {
-            if ('showDirectoryPicker' in window) {
-                // For File System Access API, we need user to pick directory first
-                // This is handled by the UI layer calling pickDirectory() first
-                console.warn('File System Access API not yet configured for this path');
-                // Fallback: trigger download
+    async _saveToFile(filePath, content) {
+        // If we already have a directory handle, write directly
+        if (this.currentDirHandle) {
+            try {
+                const fileName = filePath.split('/').pop();
+                return await this.writeFileToDirectory(this.currentDirHandle, fileName, content);
+            } catch (error) {
+                console.error('Error writing to directory:', error);
+                // Fallback to download
                 this._triggerDownload(filePath, content);
-                resolve(true);
-            } else {
-                this._triggerDownload(filePath, content);
-                resolve(true);
+                return true; // download fallback assumed success
             }
-        });
+        }
+
+        // Try File System Access API if available
+        if ('showDirectoryPicker' in window) {
+            try {
+                const dirHandle = await this.pickDirectory();
+                if (dirHandle) {
+                    const fileName = filePath.split('/').pop();
+                    return await this.writeFileToDirectory(dirHandle, fileName, content);
+                } else {
+                    // User cancelled picker - fallback to download
+                    this._triggerDownload(filePath, content);
+                    return true;
+                }
+            } catch (error) {
+                console.error('Directory picker failed:', error);
+                this._triggerDownload(filePath, content);
+                return true;
+            }
+        }
+
+        // No API available - fallback download
+        this._triggerDownload(filePath, content);
+        return true;
     }
 
     _triggerDownload(filePath, content) {

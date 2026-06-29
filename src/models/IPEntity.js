@@ -1,7 +1,9 @@
+import { generateUUID } from '../utils/uuid.js';
+
 // IP Entity model
 class IPEntity {
     constructor(data = {}) {
-        this.id = data.id || this._generateUUID();
+        this.id = data.id || generateUUID();
         this.vendor = data.vendor || "";
         this.library = data.library || "";
         this.name = data.name || "";
@@ -44,14 +46,6 @@ class IPEntity {
 
     static fromJSON(json) {
         return new IPEntity(json);
-    }
-
-    _generateUUID() {
-        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-            const r = Math.random() * 16 | 0;
-            const v = c === 'x' ? r : (r & 0x3 | 0x8);
-            return v.toString(16);
-        });
     }
 }
 
