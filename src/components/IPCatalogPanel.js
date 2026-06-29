@@ -1,5 +1,8 @@
 /* IPCatalogPanel.js - IP Catalog side panel UI */
 
+import { XCIParser } from '../parsers/XCIParser.js';
+import { IPXACTParser } from '../parsers/IPXACTParser.js';
+
 class IPCatalogPanel {
     constructor(ipCatalogService, app) {
         this.ipCatalogService = ipCatalogService;
@@ -84,17 +87,52 @@ class IPCatalogPanel {
     importIP() {
         const input = document.createElement('input');
         input.type = 'file';
-        input.accept = '.json';
+        input.accept = '.json,.xci,.xml';
         input.onchange = async (e) => {
             const file = e.target.files[0];
             if (!file) return;
+            
             try {
                 const text = await file.text();
-                const data = JSON.parse(text);
+                const ext = file.name.split('.').pop().toLowerCase();
                 
-                // Validate IP format
-                if (!data.name || !data.vendor || !data.library || !data.version) {
-                    alert('Invalid IP JSON: missing required fields (name, vendor, library, version)');
+                let data;
+                
+                if (ext === 'json') {
+                    data = JSON.parse(text);
+                    // Validate IP format
+                    if (!data.name || !data.vendor || !data.library || !data.version) {
+                        alert('Invalid IP JSON: missing required fields (name, vendor, library, version)');
+                        return;
+                    }
+                } else if (ext === 'xci') {
+                    const parser = new XCIParser();
+                    data = parser.parse(text);
+                    if (!data.name || !data.vendor || !data.library || !data.version) {
+                        alert('Invalid XCI file: missing required fields (name, vendor, library, version)');
+                        return;
+                    }
+                } else if (ext === 'xml') {
+                    // Try IP-XACT first, then fallback to XCI
+                    try {
+                        const parser = new IPXACTParser();
+                        data = parser.parse(text);
+                    } catch (ipxactError) {
+                        // Fallback to XCI parser
+                        try {
+                            const parser = new XCIParser();
+                            data = parser.parse(text);
+                        } catch (xciError) {
+                            alert('Failed to parse XML: neither valid IP-XACT nor XCI format.\nIP-XACT: ' + ipxactError.message + '\nXCI: ' + xciError.message);
+                            return;
+                        }
+                    }
+                    if (!data.name || !data.vendor || !data.library || !data.version) {
+                        alert('Invalid IP-XACT/XCI file: missing required fields (name, vendor, library, version)');
+                        return;
+                    }
+                } else {
+                    alert('Unsupported file format: ' + ext);
                     return;
                 }
                 
@@ -111,7 +149,7 @@ class IPCatalogPanel {
                 const ip = this.ipCatalogService.create(data);
                 await this.ipCatalogService.save();
                 this.render();
-                this.app.updateStatus(`Imported IP: ${ip.vlnv}`);
+                this.app.updateStatus(`Imported IP: ${ip.vlnv} (${ext.toUpperCase()})`);
             } catch (error) {
                 console.error('Error importing IP:', error);
                 alert('Failed to import IP: ' + error.message);

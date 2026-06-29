@@ -29,7 +29,10 @@ IP Management System/
 │   ├── models/                        # 数据模型（JavaScript 类）
 │   │   ├── IPEntity.js                # IP 核定义（VLNV + 寄存器映射）
 │   │   ├── BlockDesign.js             # Block Design / BDCell / BDConnection / AddressRegion
-│   │   └── InterfaceDefinition.js     # 接口定义模板
+│   │   └── InterfaceDefinition.js     # 接口定义模板（已弃用）
+│   ├── parsers/                       # 文件解析器
+│   │   ├── XCIParser.js               # XCI（Xilinx Component Interface）解析器
+│   │   └── IPXACTParser.js            # IP-XACT（IEEE 1685）解析器
 │   ├── services/                      # 业务逻辑层
 │   │   ├── IPCatalogService.js        # IP 目录 CRUD + 搜索
 │   │   ├── BlockDesignService.js      # 画布管理 + 连接管理 + DRC 验证
@@ -65,7 +68,7 @@ IP Management System/
 ### IP 目录管理
 - **浏览与搜索**：左侧面板展示所有 IP，支持分类过滤和关键词搜索
 - **查看详情**：点击 IP 弹出模态框，展示完整接口/参数/寄存器表
-- **导入外部 IP**：支持导入 `.json` 格式的 IP 定义，自动检测 VLNV 冲突
+- **导入外部 IP**：支持导入 `.json`、`.xci`（Xilinx Component Interface）和 `.xml`（IP-XACT）格式的 IP 定义，自动检测 VLNV 冲突
 - **导入外部设计**：通过 Open Design 按钮加载外部 JSON 设计文件
 
 ### Block Design 画布
@@ -146,7 +149,7 @@ IP Management System/
 ## 使用方式
 
 ### 1. 浏览 IP 目录
-左侧面板显示所有注册的 IP 核，支持按分类和关键词搜索。点击 IP 查看详情，双击或拖拽到画布添加实例。点击 **Import IP** 可导入外部 IP JSON。
+左侧面板显示所有注册的 IP 核，支持按分类和关键词搜索。点击 IP 查看详情，双击或拖拽到画布添加实例。点击 **Import IP** 可导入外部 IP（支持 `.json`、`.xci`、`.xml` 格式）。
 
 ### 2. 编辑 Block Design
 - **左键拖拽**：移动 IP 实例
@@ -209,7 +212,7 @@ IP Management System/
 - ✅ 接口模板自动填充（从 `interface_templates.json`）
 - ✅ HDL 文件语法检查（Verilog 基本语法：module/endmodule、括号平衡、字符串闭合）
 - ✅ IP 版本管理（实时检测同名 IP 版本冲突）
-- ✅ IP 导入外部 JSON
+- ✅ IP 导入外部 JSON / XCI / IP-XACT
 - ✅ Tcl 导出（动态 VLNV + 参数覆盖）
 
 ### 后续计划
