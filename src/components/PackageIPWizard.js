@@ -407,7 +407,7 @@ class PackageIPWizard {
                 
                 <div class="list-toolbar">
                     <button id="btn-add-file" class="btn-small">+ Add File</button>
-                    <button id="btn-check-syntax" class="btn-small" style="margin-left:8px;">Check Syntax</button>
+                    <button id="btn-check-syntax" class="btn-small" style="margin-left:8px;">Basic Check</button>
                 </div>
                 
                 <div id="syntax-check-results" class="syntax-check-results"></div>

@@ -169,7 +169,7 @@ IP Management System/
 ### 4. 封装新 IP
 点击工具栏 **Package IP** 打开 6 步向导：
 - 从 `data/interface_templates.json` 选择模板自动填充接口信号
-- 在 Step 2 点击 **Check Syntax** 检查 Verilog 文件语法
+- 在 Step 2 点击 **Basic Check** 检查 Verilog 模块声明
 - 第 6 步预览 JSON，点击 Finish 添加到 IP Catalog
 
 ### 5. 保存与导出
