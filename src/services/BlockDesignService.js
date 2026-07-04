@@ -160,6 +160,146 @@ class BlockDesignService {
         return { valid: errors.length === 0, errors };
     }
 
+    addAddressRegion(cellId, interfaceName, baseAddress, size) {
+        if (!this.currentDesign) return { success: false, error: 'No design' };
+
+        const base = this._parseAddress(baseAddress);
+        const regionSize = parseInt(size, 10);
+        if (isNaN(base) || isNaN(regionSize) || regionSize <= 0) {
+            return { success: false, error: 'Invalid base address or size' };
+        }
+
+        const high = base + regionSize - 1;
+
+        // Check for conflicts before adding
+        const tempRegions = [...this.currentDesign.address_regions];
+        const cell = this.getCell(cellId);
+        const cellName = cell ? cell.instance_name : cellId;
+        const newRegion = new AddressRegion({
+            cell_id: cellId,
+            interface_name: interfaceName,
+            base_address: base,
+            high_address: high,
+            size: regionSize,
+            address_space: 'Data'
+        });
+        tempRegions.push(newRegion);
+
+        // Validate using temp regions
+        const originalRegions = this.currentDesign.address_regions;
+        this.currentDesign.address_regions = tempRegions;
+        const validation = this.validateAddressRegions();
+        this.currentDesign.address_regions = originalRegions;
+
+        if (validation.errors.some(e => e.type === 'error')) {
+            return { success: false, error: validation.errors.find(e => e.type === 'error').message };
+        }
+
+        // Build register map with absolute addresses
+        const ipEntity = cell ? this.ipCatalogService.getById(cell.ip_entity_id) : null;
+        if (ipEntity && ipEntity.register_map && ipEntity.register_map.registers) {
+            const registers = [];
+            for (const reg of ipEntity.register_map.registers) {
+                const offset = this._parseAddress(reg.offset);
+                registers.push({
+                    ...reg,
+                    absolute_address: base + offset
+                });
+            }
+            newRegion.register_map = { registers };
+
+            // Update cell register_address_map
+            if (!cell.register_address_map) cell.register_address_map = {};
+            for (const reg of registers) {
+                cell.register_address_map[reg.name] = reg.absolute_address;
+            }
+        }
+
+        this.currentDesign.address_regions.push(newRegion);
+        return { success: true, region: newRegion };
+    }
+
+    updateAddressRegion(regionId, baseAddress, size) {
+        if (!this.currentDesign) return { success: false, error: 'No design' };
+
+        const regionIndex = this.currentDesign.address_regions.findIndex(r => r.id === regionId);
+        if (regionIndex === -1) return { success: false, error: 'Region not found' };
+
+        const base = this._parseAddress(baseAddress);
+        const regionSize = parseInt(size, 10);
+        if (isNaN(base) || isNaN(regionSize) || regionSize <= 0) {
+            return { success: false, error: 'Invalid base address or size' };
+        }
+
+        const high = base + regionSize - 1;
+        const region = this.currentDesign.address_regions[regionIndex];
+
+        // Check conflicts with temporary update
+        const tempRegions = [...this.currentDesign.address_regions];
+        tempRegions[regionIndex] = new AddressRegion({
+            ...region,
+            base_address: base,
+            high_address: high,
+            size: regionSize
+        });
+        const originalRegions = this.currentDesign.address_regions;
+        this.currentDesign.address_regions = tempRegions;
+        const validation = this.validateAddressRegions();
+        this.currentDesign.address_regions = originalRegions;
+
+        if (validation.errors.some(e => e.type === 'error')) {
+            return { success: false, error: validation.errors.find(e => e.type === 'error').message };
+        }
+
+        region.base_address = base;
+        region.high_address = high;
+        region.size = regionSize;
+
+        // Rebuild register map
+        const cell = this.getCell(region.cell_id);
+        const ipEntity = cell ? this.ipCatalogService.getById(cell.ip_entity_id) : null;
+        if (ipEntity && ipEntity.register_map && ipEntity.register_map.registers) {
+            const registers = [];
+            for (const reg of ipEntity.register_map.registers) {
+                const offset = this._parseAddress(reg.offset);
+                registers.push({
+                    ...reg,
+                    absolute_address: base + offset
+                });
+            }
+            region.register_map = { registers };
+
+            if (!cell.register_address_map) cell.register_address_map = {};
+            for (const reg of registers) {
+                cell.register_address_map[reg.name] = reg.absolute_address;
+            }
+        }
+
+        return { success: true, region };
+    }
+
+    removeAddressRegion(regionId) {
+        if (!this.currentDesign) return false;
+        const index = this.currentDesign.address_regions.findIndex(r => r.id === regionId);
+        if (index === -1) return false;
+        this.currentDesign.address_regions.splice(index, 1);
+        return true;
+    }
+
+    getAddressRegionsForCell(cellId) {
+        if (!this.currentDesign) return [];
+        return this.currentDesign.address_regions.filter(r => r.cell_id === cellId);
+    }
+
+    _parseAddress(value) {
+        if (!value) return 0;
+        const trimmed = String(value).trim();
+        if (trimmed.startsWith('0x') || trimmed.startsWith('0X')) {
+            return parseInt(trimmed, 16);
+        }
+        return parseInt(trimmed, 10) || 0;
+    }
+
     updateStatus(status) {
         if (!this.currentDesign) return null;
         this.currentDesign.status = status;
@@ -279,11 +419,21 @@ class ConnectionService {
 
     _isCompatible(srcIf, tgtIf) {
         // Check if interfaces are compatible for connection
-        // Same type and complementary roles (master/slave)
-        if (srcIf.type !== tgtIf.type) return false;
+        // Roles must be complementary (master/slave)
         if (srcIf.role === 'master' && tgtIf.role !== 'slave') return false;
         if (srcIf.role === 'slave' && tgtIf.role !== 'master') return false;
-        return true;
+
+        // Types must either match or be in an allowed protocol-downgrade pair.
+        // AXI4 master can drive AXI4-Lite slave (e.g. through an interconnect).
+        const compatibleTypes = {
+            'axi4': ['axi4', 'axi4_lite'],
+            'axi4_lite': ['axi4_lite'],
+            'axi4_stream': ['axi4_stream'],
+            'clock': ['clock'],
+            'reset': ['reset']
+        };
+        const allowedTargets = compatibleTypes[srcIf.type];
+        return allowedTargets ? allowedTargets.includes(tgtIf.type) : srcIf.type === tgtIf.type;
     }
 
     validateConnection(connectionId) {

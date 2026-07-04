@@ -20,16 +20,30 @@ IP Management System/
 ├── src/models/
 │   ├── IPEntity.js                     # IP 核定义：VLNV (vendor:library:name:version)、接口、参数、寄存器映射
 │   ├── BlockDesign.js                  # BDCell + BDConnection + AddressRegion
-│   └── InterfaceDefinition.js          # 接口模板（接口类型、角色、信号列表）
+│   └── (InterfaceDefinition.js 已删除，接口模板直接使用 data/interface_templates.json)
 ├── src/services/
 │   ├── IPCatalogService.js             # IP 目录 CRUD：getAll/getById/getByVLNV/search/create/update/delete
-│   ├── BlockDesignService.js           # 画布管理：addIPInstance/removeCell/moveCell + validateAddressRegions()
+│   ├── BlockDesignService.js           # 画布管理：addIPInstance/removeCell/moveCell + 地址区域管理 + validateAddressRegions()
 │   └── FileStorage.js                  # loadIPCatalog/loadDesign/saveDesign/exportDesignAsTcl
 ├── src/components/
-│   ├── CanvasRenderer.js               # Canvas 2D 渲染：grid/cells/connections/ports/tempConnection
+│   ├── CanvasRenderer.js               # Canvas 2D 渲染：grid/cells/connections/ports/tempConnection/validation高亮
 │   ├── IPCatalogPanel.js               # 左侧面板：IP 列表 + 搜索 + 分类过滤 + 详情弹窗 + importIP()
-│   ├── PropertiesPanel.js              # 右侧面板：属性展示 + 参数编辑模态框
-│   └── PackageIPWizard.js            # 6 步 IP 封装向导：收集 packageData → 创建 IPEntity → 保存到 Catalog
+│   ├── PropertiesPanel.js              # 右侧面板：属性展示 + 参数编辑 + 地址区域编辑 + 信号连接展示
+│   ├── PackageIPWizard.js            # 6 步 IP 封装向导：收集 packageData → 创建 IPEntity → 保存到 Catalog
+│   ├── ValidationReportPanel.js        # DRC 验证报告面板：错误列表 + 画布定位高亮
+│   └── SignalConnectionDialog.js       # 信号级连接对话框
+├── src/utils/
+│   ├── uuid.js                         # UUID v4 生成器
+│   ├── wizard-helpers.js               # PackageIPWizard 纯函数辅助：Verilog 基础检查、enum 解析
+│   └── parser-helpers.js               # XCI/IP-XACT 解析归一化辅助
+├── tests/
+│   ├── wizard-helpers.test.mjs         # Node.js 单元测试（wizard-helpers）
+│   ├── parsers.test.mjs                # Node.js 单元测试（XCI/IP-XACT 解析器）
+│   ├── package-ip-wizard-e2e.html      # 浏览器端 PackageIPWizard 端到端测试
+│   ├── validation-report-panel-e2e.html  # 浏览器端验证报告面板 E2E
+│   ├── address-region-editor-e2e.html    # 浏览器端地址分配编辑器 E2E
+│   ├── signal-connection-e2e.html        # 浏览器端信号级连接 E2E
+│   └── run-e2e.sh                        # headless Chrome 一键运行所有 E2E 测试
 ├── data/
 │   ├── ip_catalog.json                 # 3 个示例 IP（Zynq PS、AXI GPIO、AXI Interconnect）
 │   ├── interface_templates.json        # 5 个模板（AXI4/AXI-Lite/Stream/Clock/Reset）
@@ -65,20 +79,24 @@ idle → click port → isConnecting=true → mousemove (draw temp) → mouseup 
 - 必须同时维护 `hitTestPort()` 和 `drawCellInterfaces()` 的逻辑一致性
 - `_portPositions` 是每帧重建的，不要跨帧依赖其中的数据
 - `render()` 中 `drawConnections()` 必须在 `drawCells()` 之前（连接在底层）
+- 信号级连接（`connection_type === 'signal'`）从 Cell 中心绘制，使用虚线，无箭头
 
 ### 修改 `PackageIPWizard.js` 时
 - `collectCurrentStepData()` 必须在 `prevStep()`/`nextStep()` 中调用，确保数据不丢失
-- `collectAllStepData()` 是用于 Step 6 的兜底收集，只收集当前可见 DOM 的元素
+- `finish()` 开头会调用 `collectAllStepData()` 作为最终兜底
 - 每个 Step 的渲染函数必须能正确接收 `this.packageData` 作为数据源
 - 版本冲突检测：`checkVersionConflict()` 依赖 `app.ipCatalogService.getByVLNV()`
+- 纯逻辑辅助函数（Verilog 检查、enum 解析）建议放入 `src/utils/wizard-helpers.js` 以便测试
 
 ### 修改 `BlockDesignService.js` 时
 - `removeCell()` 会自动级联删除关联的 `connections` 和 `address_regions`
 - `validateAddressRegions()` 检查 `address_regions` 的 base/high 重叠
 - `getCellInterfaces()` 从 IP Entity 定义获取接口，不是从 Cell 存储
+- `addAddressRegion()` / `updateAddressRegion()` 会同步更新 Cell 的 `register_address_map`
+- `connectSignals()` 已支持信号级连接数据模型
 
 ### 修改 `IPCatalogService.js` 时
-- `create()` 使用 `IPEntity.fromJSON()` 创建对象，会自动生成 UUID
+- `create()` 使用 `new IPEntity(data)` 创建对象，会自动生成 UUID（`fromJSON()` 内部同样调用构造函数）
 - `save()` 会调用 `FileStorage.saveIPCatalog()`，可能触发下载（非 Chrome 浏览器）
 - `getByVLNV()` 是精确匹配四元组，区分大小写
 
@@ -142,7 +160,9 @@ idle → click port → isConnecting=true → mousemove (draw temp) → mouseup 
 ## 测试验证
 
 每次修改后应验证：
-1. `node -c src/**/*.js` 所有 JS 文件语法正确
-2. `index.html` 能在浏览器中正常加载（无 404）
-3. 打开 DevTools Console 检查无红色错误
-4. 核心操作：打开 → 添加 IP → 拖拽 → 连接 → 编辑参数 → 验证 → 导出 Tcl
+1. 语法检查：`find src tests -name '*.js' -o -name '*.mjs' | xargs node -c`
+2. Node 单元测试：`node tests/wizard-helpers.test.mjs` 和 `node tests/parsers.test.mjs`
+3. 浏览器 E2E 测试：`./tests/run-e2e.sh`（headless Chrome，自动启动 HTTP 服务器）
+4. `index.html` 能在浏览器中正常加载（无 404）
+5. 打开 DevTools Console 检查无红色错误
+6. 核心操作：打开 → 添加 IP → 拖拽 → 连接 → 编辑参数 → 验证 → 导出 Tcl

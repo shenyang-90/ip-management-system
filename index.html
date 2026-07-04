@@ -18,6 +18,7 @@
                 <button id="btn-package-ip" class="btn">Package IP</button>
                 <button id="btn-export-tcl" class="btn">Export Tcl</button>
                 <button id="btn-auto-connect" class="btn">Auto Connect</button>
+                <button id="btn-signal-connect" class="btn">Signal Connect</button>
                 <button id="btn-validate" class="btn">Validate</button>
             </div>
         </header>
@@ -163,6 +164,70 @@
         </div>
     </div>
 
+    <!-- Modal: Signal Connection -->
+    <div id="signal-connection-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Signal Connection</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="signal-connection-form">
+                    <div class="form-group">
+                        <label>Source Cell</label>
+                        <select id="signal-source-cell" class="filter-select"></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Source Signal</label>
+                        <select id="signal-source-signal" class="filter-select"></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Target Cell</label>
+                        <select id="signal-target-cell" class="filter-select"></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Target Signal</label>
+                        <select id="signal-target-signal" class="filter-select"></select>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button id="btn-connect-signal" class="btn-primary">Connect</button>
+                    <button class="btn-cancel modal-close">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Validation Report -->
+    <div id="validation-report-modal" class="modal hidden">
+        <div class="modal-content validation-modal">
+            <div class="modal-header">
+                <h3>Validation Report</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="validation-report-summary" class="validation-summary-bar"></div>
+                <div id="validation-report-content" class="validation-content"></div>
+                <div class="form-actions">
+                    <button id="btn-revalidate" class="btn-primary">Re-validate</button>
+                    <button class="btn-cancel modal-close">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script type="module" src="src/main.js"></script>
+    <script>
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                if (!window._appInitialized) {
+                    const msg = document.createElement('div');
+                    msg.style.cssText = 'position:fixed;top:0;left:0;width:100%;background:#c0392b;color:#fff;padding:12px;z-index:10000;text-align:center;font-family:sans-serif;';
+                    msg.textContent = '应用初始化失败。请通过本地 HTTP 服务器打开本项目（如 python -m http.server 8000），而不是直接双击 index.html。';
+                    document.body.appendChild(msg);
+                }
+            }, 2000);
+        });
+    </script>
 </body>
 </html>

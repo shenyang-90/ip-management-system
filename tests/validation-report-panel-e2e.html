@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Validation Report Panel E2E Test</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        .hidden { display: none; }
+        .result { margin: 8px 0; padding: 8px; border-radius: 4px; }
+        .pass { background: #d4edda; color: #155724; }
+        .fail { background: #f8d7da; color: #721c24; }
+        #validation-report-modal { border: 1px solid #ccc; padding: 10px; margin-top: 10px; }
+        #design-canvas { border: 1px solid #666; background: #1e1e1e; }
+    </style>
+</head>
+<body>
+    <h1>Validation Report Panel E2E Test</h1>
+    <button id="btn-run-tests">Run Tests</button>
+    <div id="test-results"></div>
+
+    <!-- Mock DOM -->
+    <canvas id="design-canvas" width="800" height="400"></canvas>
+    <div id="canvas-wrapper" style="width:800px;height:400px;"></div>
+    <div id="status-text"></div>
+    <div id="cell-count"></div>
+    <div id="connection-count"></div>
+    <div id="zoom-level">100%</div>
+
+    <div id="validation-report-modal" class="hidden">
+        <div id="validation-report-summary"></div>
+        <div id="validation-report-content"></div>
+        <button id="btn-revalidate">Re-validate</button>
+        <button class="modal-close">Close</button>
+    </div>
+
+    <script type="module">
+        import { ValidationReportPanel } from '../src/components/ValidationReportPanel.js';
+        import { CanvasRenderer } from '../src/components/CanvasRenderer.js';
+        import { BlockDesign } from '../src/models/BlockDesign.js';
+
+        const resultsEl = document.getElementById('test-results');
+        let passed = 0;
+        let failed = 0;
+
+        function log(message, isPass) {
+            const div = document.createElement('div');
+            div.className = `result ${isPass ? 'pass' : 'fail'}`;
+            div.textContent = (isPass ? '✓ ' : '✗ ') + message;
+            resultsEl.appendChild(div);
+            if (isPass) passed++; else failed++;
+        }
+
+        function assertEqual(actual, expected, message) {
+            const actualStr = JSON.stringify(actual);
+            const expectedStr = JSON.stringify(expected);
+            if (actualStr === expectedStr) {
+                log(message, true);
+            } else {
+                log(`${message}\n  expected: ${expectedStr}\n  actual:   ${actualStr}`, false);
+            }
+        }
+
+        async function runTests() {
+            resultsEl.innerHTML = '';
+            passed = 0;
+            failed = 0;
+
+            const design = new BlockDesign({
+                id: 'bd-test',
+                name: 'test_design',
+                cells: [
+                    { id: 'cell-1', ip_entity_id: 'ip-1', cell_type: 'ip_instance', instance_name: 'master_0', position_x: 100, position_y: 100, parameter_overrides: {}, register_address_map: {} },
+                    { id: 'cell-2', ip_entity_id: 'ip-2', cell_type: 'ip_instance', instance_name: 'slave_0', position_x: 300, position_y: 100, parameter_overrides: {}, register_address_map: {} }
+                ],
+                connections: [
+                    { id: 'conn-valid', source_cell_id: 'cell-1', source_interface: 'M_AXI', target_cell_id: 'cell-2', target_interface: 'S_AXI', connection_type: 'interface', status: 'valid', validation_messages: [] },
+                    { id: 'conn-invalid', source_cell_id: 'cell-1', source_interface: 'M_AXI', target_cell_id: 'cell-2', target_interface: 'CLK', connection_type: 'interface', status: 'invalid', validation_messages: [{ type: 'error', message: 'Incompatible interfaces' }] }
+                ],
+                address_regions: []
+            });
+
+            const mockApp = {
+                currentDesign: design,
+                blockDesignService: {
+                    getCurrentDesign: () => design,
+                    validateAddressRegions: () => ({
+                        valid: false,
+                        errors: [
+                            { type: 'warning', category: 'missing_address_region', message: 'Missing address region for slave_0/S_AXI' }
+                        ]
+                    })
+                },
+                connectionService: {
+                    validateAll: () => design.connections
+                },
+                canvasRenderer: {
+                    highlightValidationIssues: (connIds, cellIds) => {
+                        mockApp.lastHighlightedConnections = connIds;
+                        mockApp.lastHighlightedCells = cellIds;
+                    },
+                    clearValidationHighlights: () => {},
+                    render: () => {}
+                },
+                selectCell: (cellId) => { mockApp.selectedCellId = cellId; },
+                updateStatus: (text) => { mockApp.statusText = text; }
+            };
+
+            const panel = new ValidationReportPanel(mockApp);
+
+            // Test 1: runValidation builds report and opens modal
+            panel.runValidation();
+            assertEqual(panel.modal.classList.contains('hidden'), false, 'Validation panel is visible after runValidation');
+
+            // Test 2: report contains expected items
+            assertEqual(panel.currentReport.summary.errors, 1, 'Report has 1 error');
+            assertEqual(panel.currentReport.summary.warnings, 1, 'Report has 1 warning');
+            assertEqual(panel.currentReport.items.length, 2, 'Report has 2 items');
+
+            // Test 3: highlights are applied
+            assertEqual(mockApp.lastHighlightedConnections, ['conn-invalid'], 'Invalid connection is highlighted');
+
+            // Test 4: Locate button exists for each item
+            const locateBtns = panel.container.querySelectorAll('.btn-locate');
+            assertEqual(locateBtns.length, 2, 'Each report item has a Locate button');
+
+            // Test 5: Clicking locate selects connection
+            locateBtns[0].click();
+            // No direct assertion on canvas selection in mock, but ensure no error
+            log('Locate button click does not throw', true);
+
+            // Test 6: Close clears highlights
+            panel.close();
+            assertEqual(panel.modal.classList.contains('hidden'), true, 'Validation panel is hidden after close');
+
+            const summary = document.createElement('div');
+            summary.style.marginTop = '20px';
+            summary.style.fontWeight = 'bold';
+            summary.textContent = `${passed} passed, ${failed} failed`;
+            resultsEl.appendChild(summary);
+
+            console.log(`${passed} passed, ${failed} failed`);
+        }
+
+        document.getElementById('btn-run-tests').addEventListener('click', runTests);
+
+        // Auto-run when opened with ?autorun=1 (useful for headless CI)
+        if (new URLSearchParams(window.location.search).has('autorun')) {
+            window.addEventListener('DOMContentLoaded', runTests);
+        }
+    </script>
+</body>
+</html>

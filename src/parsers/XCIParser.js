@@ -1,6 +1,8 @@
 // XCIParser.js - Parse Xilinx Component Interface (XCI) XML files
 // XCI is an XML format used by Xilinx Vivado to describe IP configurations
 
+import { normalizeParamType, normalizeFileGroups } from '../utils/parser-helpers.js';
+
 class XCIParser {
     constructor() {}
 
@@ -70,6 +72,9 @@ class XCIParser {
             }
         }
 
+        // Normalize file_groups to internal schema
+        ip.file_groups = normalizeFileGroups(ip.file_groups);
+
         return ip;
     }
 
@@ -126,7 +131,7 @@ class XCIParser {
         return {
             name: name,
             display_name: displayName,
-            type: this._normalizeParamType(type),
+            type: normalizeParamType(type),
             default: value,
             description: description
         };
@@ -156,8 +161,8 @@ class XCIParser {
     }
 
     _normalizeInterfaceType(type) {
-        const lower = type.toLowerCase();
-        if (lower.includes('axi4') && lower.includes('lite')) return 'axi4_lite';
+        const lower = type.toLowerCase().replace(/[-_]/g, '');
+        if ((lower.includes('axi4') || lower.includes('axilite') || lower.includes('axiLite'.toLowerCase())) && lower.includes('lite')) return 'axi4_lite';
         if (lower.includes('axi4')) return 'axi4';
         if (lower.includes('axi')) return 'axi';
         if (lower.includes('apb')) return 'apb';
@@ -166,16 +171,7 @@ class XCIParser {
         if (lower.includes('clock')) return 'clock';
         if (lower.includes('reset')) return 'reset';
         if (lower.includes('interrupt')) return 'interrupt';
-        return lower;
-    }
-
-    _normalizeParamType(type) {
-        const lower = type.toLowerCase();
-        if (lower === 'bool' || lower === 'boolean') return 'boolean';
-        if (lower === 'int' || lower === 'integer' || lower === 'long') return 'integer';
-        if (lower === 'float' || lower === 'double' || lower === 'real') return 'float';
-        if (lower === 'bit' || lower === 'bitvector' || lower === 'std_logic_vector') return 'bit_vector';
-        return 'string';
+        return type.toLowerCase();
     }
 
     _inferRole(element, type) {

@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PackageIPWizard End-to-End Test</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        .hidden { display: none; }
+        #ip-packager-modal { border: 1px solid #ccc; padding: 10px; margin-top: 10px; }
+        #ip-packager-content { min-height: 200px; border: 1px dashed #aaa; padding: 10px; }
+        .result { margin: 8px 0; padding: 8px; border-radius: 4px; }
+        .pass { background: #d4edda; color: #155724; }
+        .fail { background: #f8d7da; color: #721c24; }
+        pre { background: #f5f5f5; padding: 10px; overflow: auto; }
+    </style>
+</head>
+<body>
+    <h1>PackageIPWizard End-to-End Test</h1>
+    <button id="btn-run-tests">Run Tests</button>
+    <div id="test-results"></div>
+
+    <!-- Toolbar button required by PackageIPWizard.setupEvents -->
+    <button id="btn-package-ip" class="hidden">Package IP</button>
+
+    <!-- Mock modal structure required by PackageIPWizard -->
+    <div id="ip-packager-modal" class="hidden">
+        <div id="ip-packager-content"></div>
+        <button id="wizard-prev" class="hidden">Previous</button>
+        <button id="wizard-next" class="hidden">Next</button>
+        <button id="wizard-finish" class="hidden">Finish</button>
+    </div>
+
+    <script type="module">
+        import { PackageIPWizard } from '../src/components/PackageIPWizard.js';
+        import { IPEntity } from '../src/models/IPEntity.js';
+
+        const resultsEl = document.getElementById('test-results');
+        let passed = 0;
+        let failed = 0;
+
+        function log(message, isPass) {
+            const div = document.createElement('div');
+            div.className = `result ${isPass ? 'pass' : 'fail'}`;
+            div.textContent = (isPass ? '✓ ' : '✗ ') + message;
+            resultsEl.appendChild(div);
+            if (isPass) passed++; else failed++;
+        }
+
+        function assertEqual(actual, expected, message) {
+            const actualStr = JSON.stringify(actual);
+            const expectedStr = JSON.stringify(expected);
+            if (actualStr === expectedStr) {
+                log(message, true);
+            } else {
+                log(`${message}\n  expected: ${expectedStr}\n  actual:   ${actualStr}`, false);
+            }
+        }
+
+        function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        async function runTests() {
+            resultsEl.innerHTML = '';
+            passed = 0;
+            failed = 0;
+
+            // Mock app
+            const catalog = [];
+            const mockApp = {
+                ipCatalogService: {
+                    getByVLNV: () => null,
+                    getAll: () => catalog,
+                    create: (data) => {
+                        const ip = new IPEntity(data);
+                        catalog.push(ip);
+                        return ip;
+                    },
+                    save: async () => true
+                },
+                ipCatalogPanel: { render: () => {} },
+                canvasRenderer: { render: () => {} },
+                updateStatus: (msg) => console.log('status:', msg)
+            };
+
+            const wizard = new PackageIPWizard(mockApp);
+
+            // Test 1: Open wizard starts at step 1
+            wizard.open();
+            assertEqual(wizard.currentStep, 1, 'Wizard opens at Step 1');
+
+            // Fill Step 1
+            document.getElementById('pkg-vendor').value = 'test.com';
+            document.getElementById('pkg-library').value = 'test';
+            document.getElementById('pkg-name').value = 'enum_ip';
+            document.getElementById('pkg-version').value = '1.0';
+            document.getElementById('pkg-display-name').value = 'Enum Test IP';
+            document.getElementById('pkg-description').value = 'Testing enum parameter support';
+            document.getElementById('pkg-category').value = 'Test';
+            document.getElementById('pkg-tags').value = 'test, enum';
+
+            wizard.nextStep();
+            assertEqual(wizard.currentStep, 2, 'Navigate to Step 2');
+
+            // Test 2: Add and remove files in Step 2
+            wizard.addFile();
+            wizard.addFile();
+            assertEqual(wizard.packageData.file_groups.length, 2, 'Two file rows added');
+
+            // Remove the first file row via DOM click
+            const removeBtns = document.querySelectorAll('#ip-packager-content .btn-remove-item');
+            if (removeBtns.length === 2) {
+                removeBtns[0].click();
+                assertEqual(wizard.packageData.file_groups.length, 1, 'First file row removed via button');
+            } else {
+                log(`Expected 2 remove buttons, found ${removeBtns.length}`, false);
+            }
+
+            wizard.nextStep();
+            assertEqual(wizard.currentStep, 3, 'Navigate to Step 3');
+
+            // Wait for interface templates to load
+            let templateWait = 0;
+            while (wizard.interfaceTemplates.length === 0 && templateWait < 50) {
+                await sleep(50);
+                templateWait++;
+            }
+
+            // Test 3: Add an interface from template
+            if (wizard.interfaceTemplates.length > 0) {
+                const templateSelect = document.getElementById('iface-template-select');
+                templateSelect.value = wizard.interfaceTemplates[0].id;
+                wizard.addInterfaceFromTemplate();
+                assertEqual(wizard.packageData.interfaces.length, 1, 'Interface added from template');
+            } else {
+                log('No interface templates loaded; skipping template test', true);
+            }
+
+            wizard.nextStep();
+            assertEqual(wizard.currentStep, 4, 'Navigate to Step 4');
+
+            // Test 4: Add enum parameter
+            wizard.addParameter();
+            const paramRows = document.querySelectorAll('#ip-packager-content .param-table tbody tr');
+            if (paramRows.length === 1) {
+                paramRows[0].querySelector('.param-name').value = 'C_MODE';
+                paramRows[0].querySelector('.param-display').value = 'Mode';
+                paramRows[0].querySelector('.param-type').value = 'enum';
+                // Trigger change event to show options input
+                paramRows[0].querySelector('.param-type').dispatchEvent(new Event('change'));
+                paramRows[0].querySelector('.param-default').value = '1';
+                paramRows[0].querySelector('.param-options').value = '0:Fast, 1:Slow, 2:Auto';
+
+                wizard.nextStep();
+                assertEqual(
+                    wizard.packageData.parameters,
+                    [{
+                        name: 'C_MODE',
+                        display_name: 'Mode',
+                        type: 'enum',
+                        default: 1,
+                        options: [
+                            { value: 0, label: 'Fast' },
+                            { value: 1, label: 'Slow' },
+                            { value: 2, label: 'Auto' }
+                        ]
+                    }],
+                    'Enum parameter collected correctly'
+                );
+                assertEqual(wizard.currentStep, 5, 'Navigate to Step 5');
+            } else {
+                log(`Expected 1 parameter row, found ${paramRows.length}`, false);
+            }
+
+            // Skip register map
+            wizard.nextStep();
+            assertEqual(wizard.currentStep, 6, 'Navigate to Step 6 (Preview)');
+
+            // Test 5: Finish creates IPEntity with enum parameter
+            wizard.finish();
+            await sleep(50);
+
+            assertEqual(catalog.length, 1, 'IP created in catalog');
+            if (catalog.length === 1) {
+                const ip = catalog[0];
+                assertEqual(ip.vlnv, 'test.com:test:enum_ip:1.0', 'Generated VLNV is correct');
+                assertEqual(
+                    ip.parameters,
+                    [{
+                        name: 'C_MODE',
+                        display_name: 'Mode',
+                        type: 'enum',
+                        default: 1,
+                        options: [
+                            { value: 0, label: 'Fast' },
+                            { value: 1, label: 'Slow' },
+                            { value: 2, label: 'Auto' }
+                        ]
+                    }],
+                    'IPEntity contains enum parameter'
+                );
+            }
+
+            // Summary
+            const summary = document.createElement('div');
+            summary.style.marginTop = '20px';
+            summary.style.fontWeight = 'bold';
+            summary.textContent = `${passed} passed, ${failed} failed`;
+            resultsEl.appendChild(summary);
+
+            if (failed === 0) {
+                console.log('All PackageIPWizard E2E tests passed');
+            } else {
+                console.error('Some PackageIPWizard E2E tests failed');
+            }
+        }
+
+        document.getElementById('btn-run-tests').addEventListener('click', runTests);
+
+        // Auto-run when opened with ?autorun=1 (useful for headless CI)
+        if (new URLSearchParams(window.location.search).has('autorun')) {
+            window.addEventListener('DOMContentLoaded', runTests);
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Address Region Editor E2E Test</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        .hidden { display: none; }
+        .result { margin: 8px 0; padding: 8px; border-radius: 4px; }
+        .pass { background: #d4edda; color: #155724; }
+        .fail { background: #f8d7da; color: #721c24; }
+        #properties-content { border: 1px solid #ccc; padding: 10px; min-height: 200px; }
+    </style>
+</head>
+<body>
+    <h1>Address Region Editor E2E Test</h1>
+    <button id="btn-run-tests">Run Tests</button>
+    <div id="test-results"></div>
+
+    <!-- Mock DOM -->
+    <div id="properties-content"></div>
+    <div id="status-text"></div>
+
+    <!-- Modal required by PropertiesPanel.setupModalEvents -->
+    <div id="param-editor-modal" class="hidden">
+        <div id="param-editor-title"></div>
+        <div id="param-editor-label"></div>
+        <div id="param-editor-input-container"></div>
+        <div id="param-editor-range"></div>
+        <button id="btn-save-param">Save</button>
+        <button class="modal-close">Close</button>
+    </div>
+
+    <script type="module">
+        import { PropertiesPanel } from '../src/components/PropertiesPanel.js';
+        import { BlockDesign } from '../src/models/BlockDesign.js';
+        import { IPEntity } from '../src/models/IPEntity.js';
+
+        const resultsEl = document.getElementById('test-results');
+        let passed = 0;
+        let failed = 0;
+
+        function log(message, isPass) {
+            const div = document.createElement('div');
+            div.className = `result ${isPass ? 'pass' : 'fail'}`;
+            div.textContent = (isPass ? '✓ ' : '✗ ') + message;
+            resultsEl.appendChild(div);
+            if (isPass) passed++; else failed++;
+        }
+
+        function assertEqual(actual, expected, message) {
+            const actualStr = JSON.stringify(actual);
+            const expectedStr = JSON.stringify(expected);
+            if (actualStr === expectedStr) {
+                log(message, true);
+            } else {
+                log(`${message}\n  expected: ${expectedStr}\n  actual:   ${actualStr}`, false);
+            }
+        }
+
+        async function runTests() {
+            resultsEl.innerHTML = '';
+            passed = 0;
+            failed = 0;
+
+            const ipEntity = new IPEntity({
+                vendor: 'test.com',
+                library: 'test',
+                name: 'gpio',
+                version: '1.0',
+                interfaces: [
+                    { name: 'S_AXI', type: 'axi4_lite', role: 'slave', signals: [] }
+                ],
+                register_map: {
+                    registers: [
+                        { name: 'CTRL', offset: '0x0000', width: 32, access: 'RW' },
+                        { name: 'DATA', offset: '0x0004', width: 32, access: 'RW' }
+                    ]
+                }
+            });
+
+            const design = new BlockDesign({
+                id: 'bd-test',
+                name: 'test_design',
+                cells: [
+                    { id: 'cell-1', ip_entity_id: ipEntity.id, cell_type: 'ip_instance', instance_name: 'gpio_0', position_x: 100, position_y: 100, parameter_overrides: {}, register_address_map: {} }
+                ],
+                address_regions: []
+            });
+
+            const mockApp = {
+                currentDesign: design,
+                ipCatalogService: {
+                    getById: (id) => id === ipEntity.id ? ipEntity : null
+                },
+                blockDesignService: {
+                    getCurrentDesign: () => design,
+                    getCell: (id) => design.cells.find(c => c.id === id),
+                    getCellInterfaces: (id) => {
+                        const cell = design.cells.find(c => c.id === id);
+                        if (!cell) return [];
+                        return ipEntity.interfaces;
+                    },
+                    getAddressRegionsForCell: (id) => design.address_regions.filter(r => r.cell_id === id),
+                    addAddressRegion: function(cellId, iface, base, size) {
+                        const baseNum = parseInt(base, 16);
+                        const sizeNum = parseInt(size, 10);
+                        const region = {
+                            id: 'region-' + design.address_regions.length,
+                            cell_id: cellId,
+                            interface_name: iface,
+                            base_address: baseNum,
+                            high_address: baseNum + sizeNum - 1,
+                            size: sizeNum,
+                            address_space: 'Data',
+                            register_map: {
+                                registers: ipEntity.register_map.registers.map(r => ({
+                                    ...r,
+                                    absolute_address: baseNum + parseInt(r.offset, 16)
+                                }))
+                            }
+                        };
+                        design.address_regions.push(region);
+                        const cell = design.cells.find(c => c.id === cellId);
+                        cell.register_address_map = {};
+                        for (const reg of region.register_map.registers) {
+                            cell.register_address_map[reg.name] = reg.absolute_address;
+                        }
+                        return { success: true, region };
+                    },
+                    removeAddressRegion: function(regionId) {
+                        design.address_regions = design.address_regions.filter(r => r.id !== regionId);
+                        return true;
+                    },
+                    validateAddressRegions: () => ({ valid: true, errors: [] })
+                },
+                canvasRenderer: { render: () => {} },
+                updateStatus: (text) => { mockApp.statusText = text; }
+            };
+
+            const panel = new PropertiesPanel(mockApp);
+            const cell = design.cells[0];
+
+            // Test 1: Render shows address region form for slave interface
+            panel.renderCellProperties(cell, mockApp.ipCatalogService);
+            const form = document.querySelector('#properties-content .address-region-form');
+            assertEqual(form !== null, true, 'Address region form is rendered');
+
+            // Test 2: Add address region
+            document.getElementById('addr-region-base').value = '0x40000000';
+            document.getElementById('addr-region-size').value = '512';
+            document.getElementById('btn-add-address-region').click();
+
+            assertEqual(design.address_regions.length, 1, 'Address region added');
+            assertEqual(design.address_regions[0].base_address, 0x40000000, 'Base address correct');
+            assertEqual(design.address_regions[0].size, 512, 'Size correct');
+            assertEqual(cell.register_address_map.CTRL, 0x40000000, 'CTRL register absolute address correct');
+            assertEqual(cell.register_address_map.DATA, 0x40000004, 'DATA register absolute address correct');
+
+            // Test 3: Remove address region
+            document.querySelector('.btn-remove-region').click();
+            assertEqual(design.address_regions.length, 0, 'Address region removed');
+
+            const summary = document.createElement('div');
+            summary.style.marginTop = '20px';
+            summary.style.fontWeight = 'bold';
+            summary.textContent = `${passed} passed, ${failed} failed`;
+            resultsEl.appendChild(summary);
+
+            console.log(`${passed} passed, ${failed} failed`);
+        }
+
+        document.getElementById('btn-run-tests').addEventListener('click', runTests);
+
+        // Auto-run when opened with ?autorun=1 (useful for headless CI)
+        if (new URLSearchParams(window.location.search).has('autorun')) {
+            window.addEventListener('DOMContentLoaded', runTests);
+        }
+    </script>
+</body>
+</html>

@@ -10,6 +10,8 @@ import { CanvasRenderer } from './components/CanvasRenderer.js';
 import { IPCatalogPanel } from './components/IPCatalogPanel.js';
 import { PropertiesPanel } from './components/PropertiesPanel.js';
 import { PackageIPWizard } from './components/PackageIPWizard.js';
+import { ValidationReportPanel } from './components/ValidationReportPanel.js';
+import { SignalConnectionDialog } from './components/SignalConnectionDialog.js';
 
 class App {
     constructor() {
@@ -33,6 +35,8 @@ class App {
         this.propertiesPanel = new PropertiesPanel(this);
         this.canvasRenderer = new CanvasRenderer(this);
         this.packageIPWizard = new PackageIPWizard(this);
+        this.validationReportPanel = new ValidationReportPanel(this);
+        this.signalConnectionDialog = new SignalConnectionDialog(this);
         
         // Setup event listeners
         this.setupEventListeners();
@@ -44,6 +48,10 @@ class App {
         await this.loadDefaultDesign();
         
         this.updateStatus('Ready');
+        
+        // Expose for debugging and allow the page to detect successful init
+        window.app = this;
+        window._appInitialized = true;
     }
 
     setupEventListeners() {
@@ -53,6 +61,7 @@ class App {
         document.getElementById('btn-save-design').addEventListener('click', () => this.saveDesign());
         document.getElementById('btn-export-tcl').addEventListener('click', () => this.exportTcl());
         document.getElementById('btn-validate').addEventListener('click', () => this.validateDesign());
+        document.getElementById('btn-signal-connect').addEventListener('click', () => this.signalConnectionDialog.open());
         document.getElementById('btn-auto-connect').addEventListener('click', () => this.autoConnect());
 
         // Canvas controls
@@ -200,31 +209,7 @@ class App {
 
     validateDesign() {
         if (!this.currentDesign) return;
-        
-        const connResults = this.connectionService.validateAll();
-        const connValidCount = connResults.filter(r => r.status === 'valid').length;
-        const connInvalidCount = connResults.length - connValidCount;
-        
-        const addrResult = this.blockDesignService.validateAddressRegions();
-        const addrErrorCount = addrResult.errors.filter(e => e.type === 'error').length;
-        const addrWarningCount = addrResult.errors.filter(e => e.type === 'warning').length;
-        
-        let statusText = '';
-        if (connInvalidCount === 0 && addrErrorCount === 0) {
-            statusText = `Validation passed: ${connValidCount} connections, ${addrResult.errors.length === 0 ? '0 address issues' : `${addrWarningCount} address warning(s)`}`;
-        } else {
-            statusText = `Validation: ${connValidCount} valid conn, ${connInvalidCount} invalid conn`;
-            if (addrErrorCount > 0) statusText += `, ${addrErrorCount} address error(s)`;
-            if (addrWarningCount > 0) statusText += `, ${addrWarningCount} address warning(s)`;
-            
-            // Log errors to console
-            for (const err of addrResult.errors) {
-                console.warn(`[${err.category}] ${err.message}`);
-            }
-        }
-        
-        this.updateStatus(statusText);
-        this.canvasRenderer.render();
+        this.validationReportPanel.runValidation();
     }
 
     addIPToCanvas(ipEntity, x, y) {

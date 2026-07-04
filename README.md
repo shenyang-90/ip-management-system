@@ -28,8 +28,7 @@ IP Management System/
 │   ├── main.js                        # 应用入口（初始化 + 事件总线）
 │   ├── models/                        # 数据模型（JavaScript 类）
 │   │   ├── IPEntity.js                # IP 核定义（VLNV + 寄存器映射）
-│   │   ├── BlockDesign.js             # Block Design / BDCell / BDConnection / AddressRegion
-│   │   └── InterfaceDefinition.js     # 接口定义模板（已弃用）
+│   │   └── BlockDesign.js             # Block Design / BDCell / BDConnection / AddressRegion
 │   ├── parsers/                       # 文件解析器
 │   │   ├── XCIParser.js               # XCI（Xilinx Component Interface）解析器
 │   │   └── IPXACTParser.js            # IP-XACT（IEEE 1685）解析器
@@ -38,17 +37,30 @@ IP Management System/
 │   │   ├── BlockDesignService.js      # 画布管理 + 连接管理 + DRC 验证
 │   │   └── FileStorage.js             # 本地 JSON 文件读写 + Tcl 导出
 │   └── components/                    # UI 组件
-│       ├── CanvasRenderer.js          # Canvas 画布渲染器（拖拽/缩放/平移/连接）
+│       ├── CanvasRenderer.js          # Canvas 画布渲染器（拖拽/缩放/平移/连接/高亮）
 │       ├── IPCatalogPanel.js          # IP 目录面板 + 导入外部 IP
-│       ├── PropertiesPanel.js         # 属性面板 + 参数编辑模态框
-│       └── PackageIPWizard.js       # IP 封装向导（6 步流程）
+│       ├── PropertiesPanel.js         # 属性面板 + 参数编辑 + 地址区域编辑
+│       ├── PackageIPWizard.js       # IP 封装向导（6 步流程）
+│       ├── ValidationReportPanel.js   # DRC 验证报告面板
+│       └── SignalConnectionDialog.js  # 信号级连接对话框
+│   └── utils/                         # 通用工具
+│       ├── uuid.js                    # UUID v4 生成器
+│       ├── wizard-helpers.js          # 封装向导辅助函数（可单元测试）
+│       └── parser-helpers.js          # XCI/IP-XACT 解析归一化辅助函数
+├── tests/                             # 测试文件
+│   ├── wizard-helpers.test.mjs        # Node.js 单元测试（wizard-helpers）
+│   ├── parsers.test.mjs               # Node.js 单元测试（XCI/IP-XACT 解析器）
+│   ├── package-ip-wizard-e2e.html     # 浏览器端到端测试（PackageIPWizard）
+│   ├── validation-report-panel-e2e.html # 浏览器端到端测试（验证报告面板）
+│   ├── address-region-editor-e2e.html   # 浏览器端到端测试（地址分配编辑器）
+│   └── signal-connection-e2e.html       # 浏览器端到端测试（信号级连接）
 ├── data/                              # 示例数据文件
 │   ├── ip_catalog.json                # 3 个示例 IP（Zynq PS、AXI GPIO、AXI Interconnect）
 │   ├── interface_templates.json       # 5 个接口模板（AXI4/AXI-Lite/Stream/Clock/Reset）
 │   └── designs/
 │       └── design_1.json              # 示例 Block Design（含连接和地址映射）
 ├── 01-planning/                       # 开发计划文档
-├── 02-docs/                           # 项目文档（研究报告、API 参考、用户手册）
+├── 02-docs/                           # 项目文档（研究报告、用户手册）
 ├── AGENTS.md                          # AI 协作指南（项目架构速查）
 └── README.md
 ```
@@ -62,6 +74,33 @@ IP Management System/
 | 数据存储 | 本地 JSON 文件 | 通过 `fetch()` / File System Access API 加载/保存 |
 | 样式 | 原生 CSS | 暗色主题（Vivado 风格） |
 | 浏览器 | Chrome/Edge/Firefox | File System Access API 在 Chrome 中支持最佳 |
+
+## 测试
+
+### 单元测试（Node.js）
+
+```bash
+node tests/wizard-helpers.test.mjs
+node tests/parsers.test.mjs
+```
+
+### 浏览器端到端测试
+
+打开测试页面后点击 **Run Tests** 按钮，或附加 `?autorun=1` 让测试页面自动执行：
+
+```bash
+# 先启动本地 HTTP 服务器
+python -m http.server 8000
+
+# 然后在浏览器中打开（例如）
+# http://localhost:8000/tests/package-ip-wizard-e2e.html?autorun=1
+```
+
+也可以使用 `tests/run-e2e.sh` 一键在 headless Chrome 中运行所有 E2E 测试：
+
+```bash
+./tests/run-e2e.sh
+```
 
 ## 核心功能
 
@@ -79,12 +118,13 @@ IP Management System/
 - **连接选择**：点击连接线选中（白色高亮），按 Delete 删除
 - **自动连接**：选中 Cell 后点击 Auto Connect，按 Master→Slave 自动匹配接口
 - **实时验证**：连接绘制后自动验证接口类型和角色兼容性
+- **信号级连接**：通过 Signal Connect 对话框创建 net-level 信号连接（虚线显示）
 
 ### 属性面板（右侧）
 - **IP 实例属性**：名称、类型、位置坐标
-- **参数编辑**：点击参数旁编辑按钮，弹出类型化编辑模态框（bool/数值/字符串）
+- **参数编辑**：点击参数旁编辑按钮，弹出类型化编辑模态框（bool/数值/字符串/enum）
 - **寄存器展示**：完整寄存器表（名称、偏移、位宽、访问权限）和位域定义
-- **地址映射**：Block Design 级别的地址分配表
+- **地址映射**：Block Design 级别的地址分配表，支持在属性面板中为 Slave 接口添加/删除地址区域
 
 ### IP Packager（封装向导）
 6 步向导流程将 HDL 设计封装为可重用的 IP 核：
@@ -99,6 +139,7 @@ IP Management System/
 - **连接验证**：接口类型兼容性、角色互补性（Master ↔ Slave）
 - **地址冲突检测**：地址区域重叠检测（Error）
 - **缺失地址映射**：AXI4-Lite Slave 接口缺少地址分配时警告（Warning）
+- **验证报告面板**：点击 Validate 打开详细报告，点击项可定位并高亮画布中的问题连接/Cell
 
 ### 导出与保存
 - **Save Design**：导出 JSON 设计文件（File System Access API 或下载）
@@ -202,6 +243,7 @@ IP Management System/
 
 ### v1.0.0 — 已实现
 - ✅ IP Catalog 浏览、搜索、分类过滤
+- ✅ 单元测试与浏览器端到端测试框架（wizard-helpers + PackageIPWizard E2E）
 - ✅ Block Design 画布（Canvas 2D 渲染，拖拽/缩放/平移）
 - ✅ 端口连接交互（点击端口 → 临时连接线 → 自动创建连接）
 - ✅ 连接可选中、删除（Delete 键）
@@ -228,8 +270,7 @@ IP Management System/
 - [AGENTS.md](AGENTS.md) — AI 协作指南（项目架构速查）
 - [Vivado IP Integrator 深度研究报告](02-docs/design/vivado-ipi-research-report.md)
 - [部署模式分析](02-docs/design/deployment-mode-analysis.md)
-- [API 参考](02-docs/api/api-reference.md)（JSON 数据格式）
-- [数据库设计](02-docs/design/database-design.md)（JSON 数据结构设计）
+- [数据结构设计](02-docs/design/database-design.md)（JSON 文件模式）
 - [用户手册](02-docs/user-guide/user-guide.md)
 
 ## 许可证

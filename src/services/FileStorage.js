@@ -90,6 +90,18 @@ class FileStorage {
         }
     }
 
+    // Write a file preserving relative subdirectories under dirHandle.
+    // relativePath e.g. "data/designs/design_1.json"
+    async _writeFileWithPath(dirHandle, relativePath, content) {
+        const parts = relativePath.split('/').filter(p => p.length > 0);
+        const fileName = parts.pop();
+        let currentHandle = dirHandle;
+        for (const dirName of parts) {
+            currentHandle = await currentHandle.getDirectoryHandle(dirName, { create: true });
+        }
+        return await this.writeFileToDirectory(currentHandle, fileName, content);
+    }
+
     async readFileFromDirectory(dirHandle, fileName) {
         try {
             const fileHandle = await dirHandle.getFileHandle(fileName);
@@ -102,18 +114,26 @@ class FileStorage {
         }
     }
 
-    // Fallback: trigger download for browsers without File System Access API
+    // Save content to filePath. In Chrome/Edge with a directory handle,
+    // writes directly while preserving relative subdirectories.
+    // Otherwise falls back to triggering a Blob download.
+    // Returns true if the file was actually written or downloaded;
+    // returns false only if the direct write failed unexpectedly.
     async _saveToFile(filePath, content) {
         // If we already have a directory handle, write directly
         if (this.currentDirHandle) {
             try {
-                const fileName = filePath.split('/').pop();
-                return await this.writeFileToDirectory(this.currentDirHandle, fileName, content);
+                const written = await this._writeFileWithPath(this.currentDirHandle, filePath, content);
+                if (!written) {
+                    console.error('Direct file write failed, falling back to download');
+                    this._triggerDownload(filePath, content);
+                }
+                return true;
             } catch (error) {
                 console.error('Error writing to directory:', error);
                 // Fallback to download
                 this._triggerDownload(filePath, content);
-                return true; // download fallback assumed success
+                return true;
             }
         }
 
@@ -122,8 +142,12 @@ class FileStorage {
             try {
                 const dirHandle = await this.pickDirectory();
                 if (dirHandle) {
-                    const fileName = filePath.split('/').pop();
-                    return await this.writeFileToDirectory(dirHandle, fileName, content);
+                    const written = await this._writeFileWithPath(dirHandle, filePath, content);
+                    if (!written) {
+                        console.error('Direct file write failed, falling back to download');
+                        this._triggerDownload(filePath, content);
+                    }
+                    return true;
                 } else {
                     // User cancelled picker - fallback to download
                     this._triggerDownload(filePath, content);

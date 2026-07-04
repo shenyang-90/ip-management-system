@@ -1,6 +1,7 @@
 /* PackageIPWizard.js - IP Packager Wizard for creating custom IPs */
 
 import { IPEntity } from '../models/IPEntity.js';
+import { checkVerilogSyntax, formatEnumOptions, parseEnumOptions, coerceEnumDefault } from '../utils/wizard-helpers.js';
 
 class PackageIPWizard {
     constructor(app) {
@@ -36,10 +37,18 @@ class PackageIPWizard {
     
     async loadInterfaceTemplates() {
         try {
-            const response = await fetch('data/interface_templates.json');
+            // Resolve relative to this module so the wizard works both from the
+            // application root and from test pages located in subdirectories.
+            const moduleUrl = new URL('.', import.meta.url).href;
+            const response = await fetch(new URL('../../data/interface_templates.json', moduleUrl));
             if (!response.ok) throw new Error('Failed to load interface templates');
             const data = await response.json();
             this.interfaceTemplates = data.templates || [];
+            // If the user is already on the interface step, refresh it so the
+            // template selector appears without requiring navigation.
+            if (this.currentStep === 3) {
+                this.renderStep3(this.container);
+            }
         } catch (error) {
             console.warn('Could not load interface templates:', error);
             this.interfaceTemplates = [];
@@ -222,6 +231,10 @@ class PackageIPWizard {
                     } else if (p.type === 'long' || p.type === 'int') {
                         const parsed = parseInt(p.default, 10);
                         p.default = isNaN(parsed) ? 0 : parsed;
+                    } else if (p.type === 'enum') {
+                        const optionsStr = row.querySelector('.param-options')?.value || '';
+                        p.options = this._parseEnumOptions(optionsStr);
+                        p.default = this._coerceEnumDefault(p.default, p.options);
                     }
                     params.push(p);
                 }
@@ -420,6 +433,11 @@ class PackageIPWizard {
         
         document.getElementById('btn-add-file').addEventListener('click', () => this.addFile());
         document.getElementById('btn-check-syntax').addEventListener('click', () => this.checkHDLFiles());
+        
+        // Attach remove file listeners
+        container.querySelectorAll('.btn-remove-item').forEach(btn => {
+            btn.addEventListener('click', () => this.removeFile(parseInt(btn.dataset.idx, 10)));
+        });
     }
     
     checkHDLFiles() {
@@ -478,72 +496,7 @@ class PackageIPWizard {
     }
     
     checkVerilogSyntax(content) {
-        const errors = [];
-        const lines = content.split('\n');
-        
-        let inModule = false;
-        let moduleParenBalance = 0;
-        let hasModuleDeclaration = false;
-        let hasEndmodule = false;
-        
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i].trim();
-            if (line.startsWith('//') || line.startsWith('/*')) continue;
-            
-            // Check module declaration
-            if (/\bmodule\s+\w+/.test(line)) {
-                hasModuleDeclaration = true;
-                inModule = true;
-                const match = line.match(/\bmodule\s+(\w+)/);
-                if (!match) {
-                    errors.push({ line: i + 1, message: 'Module declaration missing module name' });
-                }
-            }
-            
-            // Check for endmodule
-            if (/\bendmodule\b/.test(line)) {
-                hasEndmodule = true;
-                inModule = false;
-            }
-            
-            // Track parentheses balance in module declaration
-            if (inModule) {
-                for (const ch of line) {
-                    if (ch === '(') moduleParenBalance++;
-                    else if (ch === ')') moduleParenBalance--;
-                }
-            }
-            
-            // Check basic syntax issues
-            if (line.includes('module') && !line.match(/\bmodule\s/)) {
-                if (!line.startsWith('//') && !line.includes('endmodule')) {
-                    errors.push({ line: i + 1, message: 'Possible malformed module keyword' });
-                }
-            }
-            
-            // Check for unclosed strings
-            const quoteCount = (line.match(/"/g) || []).length;
-            if (quoteCount % 2 !== 0) {
-                errors.push({ line: i + 1, message: 'Unclosed string literal' });
-            }
-            
-            // Check for unclosed block comments
-            if (line.includes('/*') && !line.includes('*/')) {
-                errors.push({ line: i + 1, message: 'Unclosed block comment (/* without */)' });
-            }
-        }
-        
-        if (!hasModuleDeclaration) {
-            errors.push({ line: 1, message: 'No module declaration found (expected "module <name>" keyword)' });
-        }
-        if (hasModuleDeclaration && !hasEndmodule) {
-            errors.push({ line: lines.length, message: 'Missing "endmodule" keyword' });
-        }
-        if (moduleParenBalance !== 0) {
-            errors.push({ line: 1, message: `Unbalanced parentheses in module port list (${moduleParenBalance} unmatched)` });
-        }
-        
-        return errors;
+        return checkVerilogSyntax(content);
     }
     
     renderFileList() {
@@ -777,6 +730,16 @@ class PackageIPWizard {
         container.querySelectorAll('.btn-remove-item').forEach(btn => {
             btn.addEventListener('click', () => this.removeParameter(parseInt(btn.dataset.idx)));
         });
+        
+        // Show/hide enum options input based on parameter type
+        container.querySelectorAll('.param-type').forEach(select => {
+            select.addEventListener('change', (e) => {
+                const optionsInput = e.target.closest('tr').querySelector('.param-options');
+                if (optionsInput) {
+                    optionsInput.style.display = e.target.value === 'enum' ? '' : 'none';
+                }
+            });
+        });
     }
     
     renderParameterList() {
@@ -784,7 +747,7 @@ class PackageIPWizard {
             return '<div class="placeholder-text">No parameters defined</div>';
         }
         
-        let html = '<table class="param-table"><thead><tr><th>Name</th><th>Display Name</th><th>Type</th><th>Default</th><th>Min</th><th>Max</th><th></th></tr></thead><tbody>';
+        let html = '<table class="param-table"><thead><tr><th>Name</th><th>Display Name</th><th>Type</th><th>Default</th><th>Min</th><th>Max</th><th>Options</th><th></th></tr></thead><tbody>';
         for (let i = 0; i < this.packageData.parameters.length; i++) {
             const p = this.packageData.parameters[i];
             html += `<tr>
@@ -796,11 +759,13 @@ class PackageIPWizard {
                         <option value="long" ${p.type === 'long' ? 'selected' : ''}>long</option>
                         <option value="int" ${p.type === 'int' ? 'selected' : ''}>int</option>
                         <option value="string" ${p.type === 'string' ? 'selected' : ''}>string</option>
+                        <option value="enum" ${p.type === 'enum' ? 'selected' : ''}>enum</option>
                     </select>
                 </td>
                 <td><input type="text" value="${p.default !== undefined ? p.default : ''}" class="param-default" data-idx="${i}" style="width:80px;"></td>
                 <td><input type="number" value="${p.range ? p.range.min : ''}" class="param-min" data-idx="${i}" style="width:60px;"></td>
                 <td><input type="number" value="${p.range ? p.range.max : ''}" class="param-max" data-idx="${i}" style="width:60px;"></td>
+                <td><input type="text" value="${p.options ? this._formatEnumOptions(p.options) : ''}" class="param-options" data-idx="${i}" placeholder="0:A, 1:B" style="width:120px; ${p.type === 'enum' ? '' : 'display:none;'}"></td>
                 <td><button class="btn-remove-item" data-idx="${i}">&times;</button></td>
             </tr>`;
         }
@@ -1070,6 +1035,10 @@ class PackageIPWizard {
                     } else if (p.type === 'long' || p.type === 'int') {
                         const parsed = parseInt(p.default, 10);
                         p.default = isNaN(parsed) ? 0 : parsed;
+                    } else if (p.type === 'enum') {
+                        const optionsStr = row.querySelector('.param-options')?.value || '';
+                        p.options = this._parseEnumOptions(optionsStr);
+                        p.default = this._coerceEnumDefault(p.default, p.options);
                     }
                     params.push(p);
                 }
@@ -1114,9 +1083,24 @@ class PackageIPWizard {
         }
     }
     
+    _formatEnumOptions(options) {
+        return formatEnumOptions(options);
+    }
+    
+    _parseEnumOptions(str) {
+        return parseEnumOptions(str);
+    }
+    
+    _coerceEnumDefault(value, options) {
+        return coerceEnumDefault(value, options);
+    }
+    
     finish() {
-        // Data is already collected via collectCurrentStepData on each step transition
-        // Don't call collectAllStepData which may overwrite with stale data
+        // Final safety net: collect any visible DOM data before finishing.
+        // This is especially important if finish() is ever invoked from an intermediate step.
+        this.collectAllStepData();
+        
+        // Data is also collected via collectCurrentStepData on each step transition
         
         // Validate
         if (!this.packageData.name) {

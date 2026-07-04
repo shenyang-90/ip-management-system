@@ -97,6 +97,12 @@ class PropertiesPanel {
                 }
                 html += '</div>';
             }
+
+            // Address Regions editor
+            html += this._renderAddressRegionEditor(cell, ipEntity, ipCatalogService);
+
+            // Connections (interface + signal)
+            html += this._renderCellConnections(cell);
             
             // Register address map (instance-level)
             if (cell.register_address_map && Object.keys(cell.register_address_map).length > 0) {
@@ -123,12 +129,116 @@ class PropertiesPanel {
         
         this.container.innerHTML = html;
 
+        // Attach address region listeners
+        this._setupAddressRegionListeners(cell);
+
         // Attach edit button listeners
         this.container.querySelectorAll('.btn-edit-param').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const paramName = btn.dataset.paramName;
                 this.openParamEditor(cell, paramName, ipEntity);
+            });
+        });
+    }
+
+    _renderCellConnections(cell) {
+        const design = this.app.blockDesignService.getCurrentDesign();
+        if (!design) return '';
+
+        const cellConnections = design.connections.filter(
+            c => c.source_cell_id === cell.id || c.target_cell_id === cell.id
+        );
+        if (cellConnections.length === 0) return '';
+
+        let html = `<div class="properties-group"><h4>Connections</h4>`;
+        for (const conn of cellConnections) {
+            const isSource = conn.source_cell_id === cell.id;
+            const otherCellId = isSource ? conn.target_cell_id : conn.source_cell_id;
+            const otherCell = design.cells.find(c => c.id === otherCellId);
+            const otherName = otherCell ? otherCell.instance_name : otherCellId;
+
+            if (conn.connection_type === 'interface') {
+                const localIf = isSource ? conn.source_interface : conn.target_interface;
+                const remoteIf = isSource ? conn.target_interface : conn.source_interface;
+                html += `<div class="property-row"><span class="property-label">${localIf}</span><span class="property-value">→ ${otherName}/${remoteIf}</span></div>`;
+            } else if (conn.connection_type === 'signal') {
+                const localSig = isSource ? conn.source_signal : conn.target_signal;
+                const remoteSig = isSource ? conn.target_signal : conn.source_signal;
+                html += `<div class="property-row"><span class="property-label">${localSig}</span><span class="property-value">(signal) → ${otherName}/${remoteSig}</span></div>`;
+            }
+        }
+        html += '</div>';
+        return html;
+    }
+
+    _renderAddressRegionEditor(cell, ipEntity, ipCatalogService) {
+        const regions = this.app.blockDesignService.getAddressRegionsForCell(cell.id);
+        const slaveInterfaces = (ipEntity.interfaces || []).filter(i => i.role === 'slave');
+        const hasEditableSlaves = slaveInterfaces.length > 0;
+
+        let html = `<div class="properties-group"><h4>Address Regions</h4>`;
+
+        if (regions.length > 0) {
+            html += `<table class="register-table"><thead><tr><th>Interface</th><th>Base</th><th>High</th><th>Size</th><th></th></tr></thead><tbody>`;
+            for (const region of regions) {
+                html += `<tr>
+                    <td>${region.interface_name}</td>
+                    <td>0x${region.base_address.toString(16).toUpperCase()}</td>
+                    <td>0x${region.high_address.toString(16).toUpperCase()}</td>
+                    <td>${region.size}</td>
+                    <td><button class="btn-remove-region btn-small" data-region-id="${region.id}">&times;</button></td>
+                </tr>`;
+            }
+            html += '</tbody></table>';
+        } else {
+            html += '<div class="placeholder-text">No address regions assigned</div>';
+        }
+
+        if (hasEditableSlaves) {
+            html += `<div class="address-region-form">`;
+            html += `<select id="addr-region-interface" class="filter-select">`;
+            for (const iface of slaveInterfaces) {
+                const hasRegion = regions.some(r => r.interface_name === iface.name);
+                html += `<option value="${iface.name}" ${hasRegion ? 'disabled' : ''}>${iface.name} ${hasRegion ? '(assigned)' : ''}</option>`;
+            }
+            html += `</select>`;
+            html += `<input type="text" id="addr-region-base" placeholder="0x40000000" style="width:120px;">`;
+            html += `<input type="number" id="addr-region-size" placeholder="Size" value="512" style="width:80px;">`;
+            html += `<button id="btn-add-address-region" class="btn-small">Add</button>`;
+            html += `<div id="addr-region-error" class="addr-region-error" style="color:#ff6b6b;font-size:12px;margin-top:4px;"></div>`;
+            html += `</div>`;
+        }
+
+        html += '</div>';
+        return html;
+    }
+
+    _setupAddressRegionListeners(cell) {
+        const addBtn = this.container.querySelector('#btn-add-address-region');
+        if (addBtn) {
+            addBtn.addEventListener('click', () => {
+                const interfaceName = this.container.querySelector('#addr-region-interface')?.value;
+                const base = this.container.querySelector('#addr-region-base')?.value;
+                const size = this.container.querySelector('#addr-region-size')?.value;
+                const errorEl = this.container.querySelector('#addr-region-error');
+                const result = this.app.blockDesignService.addAddressRegion(cell.id, interfaceName, base, size);
+                if (result.success) {
+                    this.renderCellProperties(cell, this.app.ipCatalogService);
+                    this.app.canvasRenderer.render();
+                    this.app.updateStatus(`Added address region for ${interfaceName}`);
+                } else {
+                    errorEl.textContent = result.error || 'Failed to add address region';
+                }
+            });
+        }
+
+        this.container.querySelectorAll('.btn-remove-region').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this.app.blockDesignService.removeAddressRegion(btn.dataset.regionId);
+                this.renderCellProperties(cell, this.app.ipCatalogService);
+                this.app.canvasRenderer.render();
+                this.app.updateStatus('Removed address region');
             });
         });
     }
@@ -171,7 +281,8 @@ class PropertiesPanel {
         } else if (param.type === 'enum' && param.options) {
             inputHtml = `<select id="param-editor-input" class="filter-select">`;
             for (const opt of param.options) {
-                inputHtml += `<option value="${opt.value}" ${currentValue === opt.value ? 'selected' : ''}>${opt.label || opt.value}</option>`;
+                const selected = String(currentValue) === String(opt.value) ? 'selected' : '';
+                inputHtml += `<option value="${opt.value}" ${selected}>${opt.label || opt.value}</option>`;
             }
             inputHtml += `</select>`;
         } else {
@@ -208,6 +319,9 @@ class PropertiesPanel {
                     return;
                 }
             }
+        } else if (paramType === 'enum' && this.editingParam.options) {
+            const matchingOpt = this.editingParam.options.find(o => String(o.value) === rawValue);
+            value = matchingOpt ? matchingOpt.value : rawValue;
         } else {
             value = rawValue;
         }

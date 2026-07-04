@@ -10,6 +10,8 @@ class CanvasRenderer {
         this.selectedCellId = null;
         this.selectedConnectionId = null;
         this.hoveredPort = null;
+        this.highlightedCells = new Set();
+        this.highlightedConnections = new Set();
         this.zoom = 1.0;
         this.panX = 0;
         this.panY = 0;
@@ -60,6 +62,18 @@ class CanvasRenderer {
     selectConnection(connId) {
         this.selectedConnectionId = connId;
         this.selectedCellId = null;
+        this.render();
+    }
+
+    highlightValidationIssues(connectionIds = [], cellIds = []) {
+        this.highlightedConnections = new Set(connectionIds);
+        this.highlightedCells = new Set(cellIds);
+        this.render();
+    }
+
+    clearValidationHighlights() {
+        this.highlightedConnections.clear();
+        this.highlightedCells.clear();
         this.render();
     }
 
@@ -281,13 +295,20 @@ class CanvasRenderer {
             const targetCell = this.design.cells.find(c => c.id === conn.target_cell_id);
             if (!sourceCell || !targetCell) continue;
 
-            const sourcePort = this.getPortPosition(sourceCell.id, conn.source_interface);
-            const targetPort = this.getPortPosition(targetCell.id, conn.target_interface);
-
-            const startX = sourcePort ? sourcePort.x : sourceCell.position_x + this.cellWidth;
-            const startY = sourcePort ? sourcePort.y : sourceCell.position_y + this.cellHeight / 2;
-            const endX = targetPort ? targetPort.x : targetCell.position_x;
-            const endY = targetPort ? targetPort.y : targetCell.position_y + this.cellHeight / 2;
+            let startX, startY, endX, endY;
+            if (conn.connection_type === 'signal') {
+                startX = sourceCell.position_x + this.cellWidth / 2;
+                startY = sourceCell.position_y + this.cellHeight / 2;
+                endX = targetCell.position_x + this.cellWidth / 2;
+                endY = targetCell.position_y + this.cellHeight / 2;
+            } else {
+                const sourcePort = this.getPortPosition(sourceCell.id, conn.source_interface);
+                const targetPort = this.getPortPosition(targetCell.id, conn.target_interface);
+                startX = sourcePort ? sourcePort.x : sourceCell.position_x + this.cellWidth;
+                startY = sourcePort ? sourcePort.y : sourceCell.position_y + this.cellHeight / 2;
+                endX = targetPort ? targetPort.x : targetCell.position_x;
+                endY = targetPort ? targetPort.y : targetCell.position_y + this.cellHeight / 2;
+            }
 
             const midX = (startX + endX) / 2;
             const distance = this._pointToBezierDistance(x, y, startX, startY, midX, startY, midX, endY, endX, endY);
@@ -466,11 +487,12 @@ class CanvasRenderer {
         const w = this.cellWidth;
         const h = this.cellHeight;
         const isSelected = cell.id === this.selectedCellId;
+        const isHighlighted = this.highlightedCells.has(cell.id);
 
         // Cell body
         ctx.fillStyle = isSelected ? '#1e3a5f' : '#2d2d2d';
-        ctx.strokeStyle = isSelected ? '#569cd6' : '#5a5a5a';
-        ctx.lineWidth = isSelected ? 3 : 2;
+        ctx.strokeStyle = isHighlighted ? '#ff6b6b' : (isSelected ? '#569cd6' : '#5a5a5a');
+        ctx.lineWidth = isHighlighted ? 4 : (isSelected ? 3 : 2);
 
         const radius = 6;
         ctx.beginPath();
@@ -610,30 +632,41 @@ class CanvasRenderer {
         if (!sourceCell || !targetCell) return;
 
         const isSelected = conn.id === this.selectedConnectionId;
+        const isHighlighted = this.highlightedConnections.has(conn.id);
         const isValid = conn.status === 'valid';
-
-        const sourcePort = this.getPortPosition(sourceCell.id, conn.source_interface);
-        const targetPort = this.getPortPosition(targetCell.id, conn.target_interface);
+        const isSignal = conn.connection_type === 'signal';
 
         let startX, startY, endX, endY;
-        if (sourcePort) {
-            startX = sourcePort.x;
-            startY = sourcePort.y;
-        } else {
-            startX = sourceCell.position_x + this.cellWidth;
+        if (isSignal) {
+            // Signal connections originate from cell center
+            startX = sourceCell.position_x + this.cellWidth / 2;
             startY = sourceCell.position_y + this.cellHeight / 2;
-        }
-
-        if (targetPort) {
-            endX = targetPort.x;
-            endY = targetPort.y;
-        } else {
-            endX = targetCell.position_x;
+            endX = targetCell.position_x + this.cellWidth / 2;
             endY = targetCell.position_y + this.cellHeight / 2;
+        } else {
+            const sourcePort = this.getPortPosition(sourceCell.id, conn.source_interface);
+            const targetPort = this.getPortPosition(targetCell.id, conn.target_interface);
+
+            if (sourcePort) {
+                startX = sourcePort.x;
+                startY = sourcePort.y;
+            } else {
+                startX = sourceCell.position_x + this.cellWidth;
+                startY = sourceCell.position_y + this.cellHeight / 2;
+            }
+
+            if (targetPort) {
+                endX = targetPort.x;
+                endY = targetPort.y;
+            } else {
+                endX = targetCell.position_x;
+                endY = targetCell.position_y + this.cellHeight / 2;
+            }
         }
 
-        ctx.strokeStyle = isSelected ? '#ffffff' : (isValid ? '#4ec9b0' : '#f44747');
-        ctx.lineWidth = isSelected ? 3 : 2;
+        ctx.strokeStyle = isSelected ? '#ffffff' : (isHighlighted ? '#ff6b6b' : (isValid ? '#4ec9b0' : '#f44747'));
+        ctx.setLineDash(isSignal ? [4, 4] : (isHighlighted ? [6, 3] : []));
+        ctx.lineWidth = isSelected ? 3 : (isSignal ? 1.5 : 2);
         ctx.lineCap = 'round';
 
         // Bezier curve
@@ -647,9 +680,12 @@ class CanvasRenderer {
         ctx.moveTo(startX, startY);
         ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, endX, endY);
         ctx.stroke();
+        ctx.setLineDash([]);
 
-        // Arrow at end
-        this.drawArrow(endX, endY, -1);
+        // Arrow at end (only for interface connections)
+        if (!isSignal) {
+            this.drawArrow(endX, endY, -1);
+        }
     }
 
     drawTempConnection(start, end) {

@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Signal Connection E2E Test</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        .hidden { display: none; }
+        .result { margin: 8px 0; padding: 8px; border-radius: 4px; }
+        .pass { background: #d4edda; color: #155724; }
+        .fail { background: #f8d7da; color: #721c24; }
+        #signal-connection-modal { border: 1px solid #ccc; padding: 10px; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <h1>Signal Connection E2E Test</h1>
+    <button id="btn-run-tests">Run Tests</button>
+    <div id="test-results"></div>
+
+    <!-- Mock DOM -->
+    <div id="signal-connection-modal" class="hidden">
+        <select id="signal-source-cell"></select>
+        <select id="signal-source-signal"></select>
+        <select id="signal-target-cell"></select>
+        <select id="signal-target-signal"></select>
+        <button id="btn-connect-signal">Connect</button>
+        <button class="modal-close">Close</button>
+    </div>
+
+    <script type="module">
+        import { SignalConnectionDialog } from '../src/components/SignalConnectionDialog.js';
+        import { BlockDesign } from '../src/models/BlockDesign.js';
+        import { IPEntity } from '../src/models/IPEntity.js';
+
+        const resultsEl = document.getElementById('test-results');
+        let passed = 0;
+        let failed = 0;
+
+        function log(message, isPass) {
+            const div = document.createElement('div');
+            div.className = `result ${isPass ? 'pass' : 'fail'}`;
+            div.textContent = (isPass ? '✓ ' : '✗ ') + message;
+            resultsEl.appendChild(div);
+            if (isPass) passed++; else failed++;
+        }
+
+        function assertEqual(actual, expected, message) {
+            const actualStr = JSON.stringify(actual);
+            const expectedStr = JSON.stringify(expected);
+            if (actualStr === expectedStr) {
+                log(message, true);
+            } else {
+                log(`${message}\n  expected: ${expectedStr}\n  actual:   ${actualStr}`, false);
+            }
+        }
+
+        async function runTests() {
+            resultsEl.innerHTML = '';
+            passed = 0;
+            failed = 0;
+
+            const ip1 = new IPEntity({
+                vendor: 'test.com', library: 'test', name: 'clk_gen', version: '1.0',
+                interfaces: [
+                    { name: 'CLK', type: 'clock', role: 'master', signals: [{ name: 'clk', direction: 'output' }] }
+                ]
+            });
+            const ip2 = new IPEntity({
+                vendor: 'test.com', library: 'test', name: 'gpio', version: '1.0',
+                interfaces: [
+                    { name: 'S_AXI', type: 'axi4_lite', role: 'slave', signals: [{ name: 's_axi_aclk', direction: 'input' }] }
+                ]
+            });
+
+            const design = new BlockDesign({
+                id: 'bd-test',
+                name: 'test_design',
+                cells: [
+                    { id: 'cell-1', ip_entity_id: ip1.id, cell_type: 'ip_instance', instance_name: 'clk_0', position_x: 100, position_y: 100, parameter_overrides: {}, register_address_map: {} },
+                    { id: 'cell-2', ip_entity_id: ip2.id, cell_type: 'ip_instance', instance_name: 'gpio_0', position_x: 300, position_y: 100, parameter_overrides: {}, register_address_map: {} }
+                ],
+                connections: []
+            });
+
+            const mockApp = {
+                blockDesignService: {
+                    getCurrentDesign: () => design,
+                    getCell: (id) => design.cells.find(c => c.id === id)
+                },
+                ipCatalogService: {
+                    getById: (id) => [ip1, ip2].find(ip => ip.id === id)
+                },
+                connectionService: {
+                    connectSignals: (srcCell, srcSig, tgtCell, tgtSig) => {
+                        design.connections.push({
+                            id: 'conn-1',
+                            source_cell_id: srcCell,
+                            source_signal: srcSig,
+                            target_cell_id: tgtCell,
+                            target_signal: tgtSig,
+                            connection_type: 'signal',
+                            status: 'valid',
+                            validation_messages: []
+                        });
+                        return design.connections[design.connections.length - 1];
+                    }
+                },
+                canvasRenderer: { render: () => {} },
+                updateCounts: () => {},
+                updateStatus: (text) => { mockApp.statusText = text; }
+            };
+
+            const dialog = new SignalConnectionDialog(mockApp);
+
+            // Test 1: Open dialog populates cell selects
+            dialog.open();
+            assertEqual(dialog.modal.classList.contains('hidden'), false, 'Signal dialog is visible');
+            assertEqual(document.getElementById('signal-source-cell').options.length, 3, 'Cell options populated (2 cells + placeholder)');
+
+            // Test 2: Selecting cell populates signals
+            document.getElementById('signal-source-cell').value = 'cell-1';
+            document.getElementById('signal-source-cell').dispatchEvent(new Event('change'));
+            assertEqual(document.getElementById('signal-source-signal').options.length, 2, 'Source signals populated (1 signal + placeholder)');
+
+            document.getElementById('signal-target-cell').value = 'cell-2';
+            document.getElementById('signal-target-cell').dispatchEvent(new Event('change'));
+            assertEqual(document.getElementById('signal-target-signal').options.length, 2, 'Target signals populated');
+
+            // Test 3: Create signal connection
+            document.getElementById('signal-source-signal').value = 'CLK/clk';
+            document.getElementById('signal-target-signal').value = 'S_AXI/s_axi_aclk';
+            document.getElementById('btn-connect-signal').click();
+
+            assertEqual(design.connections.length, 1, 'Signal connection created');
+            assertEqual(design.connections[0].connection_type, 'signal', 'Connection type is signal');
+            assertEqual(design.connections[0].source_signal, 'clk', 'Source signal name extracted');
+            assertEqual(design.connections[0].target_signal, 's_axi_aclk', 'Target signal name extracted');
+
+            const summary = document.createElement('div');
+            summary.style.marginTop = '20px';
+            summary.style.fontWeight = 'bold';
+            summary.textContent = `${passed} passed, ${failed} failed`;
+            resultsEl.appendChild(summary);
+
+            console.log(`${passed} passed, ${failed} failed`);
+        }
+
+        document.getElementById('btn-run-tests').addEventListener('click', runTests);
+
+        // Auto-run when opened with ?autorun=1 (useful for headless CI)
+        if (new URLSearchParams(window.location.search).has('autorun')) {
+            window.addEventListener('DOMContentLoaded', runTests);
+        }
+    </script>
+</body>
+</html>

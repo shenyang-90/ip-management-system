@@ -2,6 +2,8 @@
 // IP-XACT is a standard XML format for describing IP components in SoC designs
 // Supports both spirit: (legacy) and ipxact: (IEEE 1685-2014+) namespaces
 
+import { normalizeParamType, normalizeFileGroups, parseAddress, formatAddress } from '../utils/parser-helpers.js';
+
 class IPXACTParser {
     constructor() {
         this.namespacePrefix = ''; // Will be detected from XML
@@ -91,6 +93,7 @@ class IPXACTParser {
                 ip.file_groups.push(this._parseFileSet(fileSet));
             }
         }
+        ip.file_groups = normalizeFileGroups(ip.file_groups);
 
         // Parse memory maps (register definitions)
         const memoryMaps = this._getChild(element, 'memoryMaps');
@@ -152,15 +155,27 @@ class IPXACTParser {
         
         // Determine parameter type
         let type = 'string';
-        const valueEl = this._getChild(element, 'value');
-        if (valueEl) {
-            const resolve = valueEl.getAttribute('resolve') || element.getAttribute('resolve') || 'string';
-            type = this._normalizeParamType(resolve);
-        } else {
-            // Try to infer from value format
-            if (/^(true|false)$/i.test(value)) type = 'boolean';
-            else if (/^\d+$/.test(value)) type = 'integer';
-            else if (/^\d+\.\d+$/.test(value)) type = 'float';
+        // Prefer a <value> element that carries the resolve/type attribute
+        const allValueEls = element.querySelectorAll(this._ns('value'));
+        let typedValueEl = null;
+        for (const el of allValueEls) {
+            if (el.getAttribute('resolve')) {
+                typedValueEl = el;
+                break;
+            }
+        }
+        if (typedValueEl) {
+            type = normalizeParamType(typedValueEl.getAttribute('resolve'));
+        } else if (allValueEls.length > 0) {
+            const resolve = element.getAttribute('resolve');
+            if (resolve) {
+                type = normalizeParamType(resolve);
+            } else {
+                // Try to infer from value format
+                if (/^(true|false)$/i.test(value)) type = 'bool';
+                else if (/^\d+$/.test(value)) type = 'long';
+                else if (/^\d+\.\d+$/.test(value)) type = 'string';
+            }
         }
 
         const description = this._getText(element, 'description') || '';
@@ -212,9 +227,9 @@ class IPXACTParser {
                     
                     registers.push({
                         name: regName,
-                        offset: baseAddress + offset,
+                        offset: formatAddress(offset),
                         width: regWidth,
-                        access: access,
+                        access: this._normalizeAccess(access),
                         description: description
                     });
                 }
@@ -237,8 +252,12 @@ class IPXACTParser {
     }
 
     _ns(tagName) {
-        // Return tag name with detected namespace prefix
-        if (!this.namespacePrefix) return tagName;
+        // Return tag name with detected namespace prefix.
+        // For default namespace, querySelector('tagName') does NOT match namespaced
+        // elements, so we use the local-name() selector.
+        if (!this.namespacePrefix) {
+            return `*[local-name()='${tagName}']`;
+        }
         return this.namespacePrefix + tagName;
     }
 
@@ -255,8 +274,8 @@ class IPXACTParser {
     }
 
     _normalizeInterfaceType(type) {
-        const lower = type.toLowerCase();
-        if (lower.includes('axi4') && lower.includes('lite')) return 'axi4_lite';
+        const lower = type.toLowerCase().replace(/[-_]/g, '');
+        if ((lower.includes('axi4') || lower.includes('axilite')) && lower.includes('lite')) return 'axi4_lite';
         if (lower.includes('axi4')) return 'axi4';
         if (lower.includes('axi')) return 'axi';
         if (lower.includes('apb')) return 'apb';
@@ -266,16 +285,17 @@ class IPXACTParser {
         if (lower.includes('reset')) return 'reset';
         if (lower.includes('interrupt')) return 'interrupt';
         if (lower.includes('gpio')) return 'gpio';
-        return lower;
+        return type.toLowerCase();
     }
 
-    _normalizeParamType(type) {
-        const lower = type.toLowerCase();
-        if (lower === 'bool' || lower === 'boolean') return 'boolean';
-        if (lower === 'int' || lower === 'integer' || lower === 'long' || lower === 'bit') return 'integer';
-        if (lower === 'float' || lower === 'double' || lower === 'real') return 'float';
-        if (lower === 'bitvector' || lower === 'std_logic_vector') return 'bit_vector';
-        return 'string';
+    _normalizeAccess(access) {
+        if (!access) return 'RW';
+        const lower = String(access).toLowerCase();
+        if (lower.includes('read-write') || lower === 'rw') return 'RW';
+        if (lower.includes('read-only') || lower === 'ro') return 'RO';
+        if (lower.includes('write-only') || lower === 'wo') return 'WO';
+        if (lower.includes('writeonce') || lower === 'w1') return 'WO';
+        return 'RW';
     }
 
     _inferRoleFromAbstraction(absName) {
